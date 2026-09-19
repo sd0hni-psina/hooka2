@@ -120,3 +120,10 @@ func TestGetMe(t *testing.T) {
 		require.Equal(t, "forbidden", errorCode(body))
 	})
 }
+
+func TestGetMeServesUTC(t *testing.T) {
+	e := setup(t)
+	_, body := e.get(t, e.token(t, e.fx.Owner))
+	created := body["staff"].(map[string]any)["created_at"].(string)
+	require.Regexp(t, `Z$`, created)
+}

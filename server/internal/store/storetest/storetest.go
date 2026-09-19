@@ -18,6 +18,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 
+	"hookah/server/internal/store"
 	"hookah/server/migrations"
 )
 
@@ -48,7 +49,7 @@ func Open(t testing.TB) *pgxpool.Pool {
 		t.Fatalf("create test database: %v", err)
 	}
 
-	pool, err := pgxpool.New(ctx, withDB(t, base, name))
+	pool, err := store.NewPool(ctx, withDB(t, base, name))
 	if err != nil {
 		t.Fatalf("open pool: %v", err)
 	}
