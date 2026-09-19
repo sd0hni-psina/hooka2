@@ -18,14 +18,16 @@ export function useHallConnection(hallId: string | null) {
   useEffect(() => {
     if (!signedIn) return;
     const client = new WsClient({
+      // accessToken refreshes ahead of expiry, so each reconnect carries a live token.
       url: async () => {
-        const token = useAuthStore.getState().session?.access_token;
+        const token = await useAuthStore.getState().accessToken();
         return token ? wsUrl(token) : null;
       },
       onMessage: (msg) => useHallStore.getState().apply(msg),
       onStatus: (s) => useHallStore.getState().setConnection(s),
     });
     clientRef.current = client;
+    client.subscribe(useHallStore.getState().hallId);
     client.start();
     return () => {
       client.stop();
