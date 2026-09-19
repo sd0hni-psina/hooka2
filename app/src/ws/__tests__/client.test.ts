@@ -52,7 +52,7 @@ function setup(onMessage: (m: ParsedMessage) => boolean | void = () => undefined
   return { client, sockets, timers, statuses };
 }
 
-const flush = () => new Promise((r) => setImmediate(r));
+const flush = () => new Promise<void>((r) => setImmediate(() => r()));
 
 const envelope = (type: string, seq: number, data: object, hall: string | null = null) => ({
   v: 1, type, seq, ts: '2026-09-19T18:00:00Z', venue_id: 'v', hall_id: hall, data,

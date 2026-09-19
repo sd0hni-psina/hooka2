@@ -4,6 +4,6 @@ const steps = [1000, 2000, 4000, 8000, 16000];
 const cap = 30000;
 
 export function reconnectDelay(attempt: number, random: () => number = Math.random): number {
-  const base = attempt < steps.length ? steps[attempt] : cap;
+  const base = steps[attempt] ?? cap;
   return Math.round(base * (1 + 0.3 * random()));
 }
