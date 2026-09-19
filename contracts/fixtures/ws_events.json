@@ -1,53 +1,163 @@
 {
   "events": [
     {
-      "v": 1, "type": "state.snapshot", "seq": 41, "ts": "2026-09-19T18:04:05.123Z",
-      "venue_id": "5b0d6a1e-2f7c-4c1a-9a51-6f3e8e2b7c10", "hall_id": "8f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+      "v": 1,
+      "type": "state.snapshot",
+      "seq": 41,
+      "ts": "2026-09-19T18:04:05.123Z",
+      "venue_id": "5b0d6a1e-2f7c-4c1a-9a51-6f3e8e2b7c10",
+      "hall_id": "8f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
       "data": {
         "server_time": "2026-09-19T18:04:05.123Z",
-        "hall": { "id": "8f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f", "name": "Второй зал" },
+        "hall": {
+          "id": "8f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+          "name": "Второй зал"
+        },
         "plan": {
           "version": 1,
           "steps": [
-            { "kind": "check", "title": "Проверьте кальян и узнайте у гостя, всё ли хорошо", "offset_sec": 300 },
-            { "kind": "shake", "title": "Стряхните угли", "offset_sec": 900, "repeat_every_sec": 900 },
-            { "kind": "replace", "title": "Замените угли", "offset_sec": 1800, "repeat_every_sec": 1800 },
-            { "kind": "expire", "title": "Кальян отработал ресурс", "offset_sec": 4800 }
+            {
+              "kind": "check",
+              "title": "Проверьте кальян и узнайте у гостя, всё ли хорошо",
+              "offset_sec": 300
+            },
+            {
+              "kind": "shake",
+              "title": "Стряхните угли",
+              "offset_sec": 900,
+              "repeat_every_sec": 900
+            },
+            {
+              "kind": "replace",
+              "title": "Замените угли",
+              "offset_sec": 1800,
+              "repeat_every_sec": 1800
+            },
+            {
+              "kind": "expire",
+              "title": "Кальян отработал ресурс",
+              "offset_sec": 4800
+            }
           ],
-          "warn_before_sec": 60, "grace_sec": 120, "missed_after_sec": 600, "push_repeat_sec": 120, "push_max_attempts": 3
+          "warn_before_sec": 60,
+          "grace_sec": 120,
+          "missed_after_sec": 600,
+          "push_repeat_sec": 120,
+          "push_max_attempts": 3
         },
         "tables": [
-          { "id": "a1b2c3d4-0000-4000-8000-000000000015", "hall_id": "8f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f", "label": "15", "shape": "rect", "x": 20, "y": 30, "w": 8, "h": 6, "rotation": 0, "seats": 4 }
+          {
+            "id": "a1b2c3d4-0000-4000-8000-000000000015",
+            "hall_id": "8f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+            "label": "15",
+            "shape": "rect",
+            "x": 20,
+            "y": 30,
+            "w": 8,
+            "h": 6,
+            "rotation": 0,
+            "seats": 4
+          }
         ],
         "hookahs": [
           {
-            "id": "c0ffee00-0000-4000-8000-000000000001", "table_id": "a1b2c3d4-0000-4000-8000-000000000015",
-            "hall_id": "8f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f", "state": "active",
-            "started_at": "2026-09-19T17:48:05Z", "expires_at": "2026-09-19T19:08:05Z", "finished_at": null,
-            "started_by": "5aff0000-0000-4000-8000-000000000002", "started_by_name": "Айдос",
+            "id": "c0ffee00-0000-4000-8000-000000000001",
+            "table_id": "a1b2c3d4-0000-4000-8000-000000000015",
+            "hall_id": "8f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+            "state": "active",
+            "started_at": "2026-09-19T17:48:05Z",
+            "expires_at": "2026-09-19T19:08:05Z",
+            "finished_at": null,
+            "started_by": "5aff0000-0000-4000-8000-000000000002",
+            "started_by_name": "Айдос",
             "status": "yellow",
             "events": [
               {
-                "id": "e0000000-0000-4000-8000-000000000002", "hookah_id": "c0ffee00-0000-4000-8000-000000000001",
-                "seq": 2, "kind": "shake", "title": "Стряхните угли", "due_at": "2026-09-19T18:03:05Z", "state": "due",
-                "claimed_by": "5aff0000-0000-4000-8000-000000000001", "claimed_by_name": "Ерлан", "claimed_at": "2026-09-19T18:03:25Z",
-                "confirmed_by": null, "confirmed_by_name": null, "confirmed_at": null, "confirmed_early": false
+                "id": "e0000000-0000-4000-8000-000000000002",
+                "hookah_id": "c0ffee00-0000-4000-8000-000000000001",
+                "seq": 2,
+                "kind": "shake",
+                "title": "Стряхните угли",
+                "due_at": "2026-09-19T18:03:05Z",
+                "state": "due",
+                "claimed_by": "5aff0000-0000-4000-8000-000000000001",
+                "claimed_by_name": "Ерлан",
+                "claimed_at": "2026-09-19T18:03:25Z",
+                "confirmed_by": null,
+                "confirmed_by_name": null,
+                "confirmed_at": null,
+                "confirmed_early": false
               }
             ]
           }
         ],
-        "staff_online": [ { "id": "5aff0000-0000-4000-8000-000000000001", "display_name": "Ерлан" } ]
+        "staff_online": [
+          {
+            "id": "5aff0000-0000-4000-8000-000000000001",
+            "display_name": "Ерлан"
+          }
+        ]
       }
     },
     {
-      "v": 1, "type": "pong", "seq": 41, "ts": "2026-09-19T18:04:06Z",
-      "venue_id": "5b0d6a1e-2f7c-4c1a-9a51-6f3e8e2b7c10", "hall_id": null,
-      "data": { "server_time": "2026-09-19T18:04:06Z" }
+      "v": 1,
+      "type": "layout.updated",
+      "seq": 42,
+      "ts": "2026-09-19T18:10:00.000Z",
+      "venue_id": "5b0d6a1e-2f7c-4c1a-9a51-6f3e8e2b7c10",
+      "hall_id": "8f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+      "data": {
+        "hall_id": "8f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+        "tables": [
+          {
+            "id": "a1b2c3d4-0000-4000-8000-000000000015",
+            "hall_id": "8f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+            "label": "15",
+            "shape": "rect",
+            "x": 20,
+            "y": 30,
+            "w": 8,
+            "h": 6,
+            "rotation": 0,
+            "seats": 4
+          },
+          {
+            "id": "a1b2c3d4-0000-4000-8000-000000000016",
+            "hall_id": "8f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+            "label": "16",
+            "shape": "circle",
+            "x": 40,
+            "y": 30,
+            "w": 10,
+            "h": 10,
+            "rotation": 45,
+            "seats": 6
+          }
+        ]
+      }
     },
     {
-      "v": 1, "type": "error", "seq": 41, "ts": "2026-09-19T18:04:07Z",
-      "venue_id": "5b0d6a1e-2f7c-4c1a-9a51-6f3e8e2b7c10", "hall_id": null,
-      "data": { "code": "not_found", "message": "subscribe failed" }
+      "v": 1,
+      "type": "pong",
+      "seq": 41,
+      "ts": "2026-09-19T18:04:06Z",
+      "venue_id": "5b0d6a1e-2f7c-4c1a-9a51-6f3e8e2b7c10",
+      "hall_id": null,
+      "data": {
+        "server_time": "2026-09-19T18:04:06Z"
+      }
+    },
+    {
+      "v": 1,
+      "type": "error",
+      "seq": 41,
+      "ts": "2026-09-19T18:04:07Z",
+      "venue_id": "5b0d6a1e-2f7c-4c1a-9a51-6f3e8e2b7c10",
+      "hall_id": null,
+      "data": {
+        "code": "not_found",
+        "message": "subscribe failed"
+      }
     }
   ]
 }

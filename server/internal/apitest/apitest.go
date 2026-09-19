@@ -63,12 +63,14 @@ func New(t *testing.T, withSeed bool) *Env {
 	accountSvc := account.NewService(pool, account.NewRepository(), staffRepo, staffSvc, venueRepo, venueSvc)
 	hookahSvc := hookah.NewService(pool, hookah.NewRepository(), layoutRepo, venueRepo, staffRepo)
 	hub := realtime.NewHub(log)
+	layoutSvc := layout.NewService(pool, layoutRepo, hub)
 
 	guard := auth.NewGuard(tokens, staffSvc, httpx.WriteError)
 	router := httpx.NewRouter(guard.Middleware)
 	staff.NewHandler(staffSvc).Register(router)
 	account.NewHandler(accountSvc).Register(router)
 	venue.NewHandler(venueSvc).Register(router)
+	layout.NewHandler(layoutSvc).Register(router)
 	realtime.NewHandler(hub, guard, hookah.Snapshots{Svc: hookahSvc}, nil, log).Register(router)
 
 	srv := httptest.NewServer(httpx.Chain(router, httpx.RequestID, httpx.Recover(log)))
@@ -126,7 +128,8 @@ func (e *Env) Do(method, path, token string, body any, headers ...string) Respon
 	raw, err := io.ReadAll(res.Body)
 	require.NoError(e.T, err)
 	out := Response{Status: res.StatusCode, Raw: raw}
-	if len(raw) > 0 {
+	// Array responses stay in Raw; read them with Decode.
+	if len(raw) > 0 && raw[0] == '{' {
 		require.NoError(e.T, json.Unmarshal(raw, &out.Body), string(raw))
 	}
 	return out
