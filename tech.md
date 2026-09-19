@@ -1,11 +1,12 @@
 # tech.md — Кальянный таймер
 
-**Версия ядра: v2** (2026-09-19)
+**Версия ядра: v3** (2026-09-19)
 
 Changelog:
 
 - v1 — первая версия. Стек, схема БД, доменные правила, HTTP и WS контракты, UI-кит, стратегия тестов, дорожная карта из 6 слайсов.
 - v2 — раздел 19.1: типы `Venue`, `Hall`, `Staff`, `Tokens`, `Me`; `device_id` и `platform` в register и login; правила валидации входа; поиск мастера по имени и миграция `0002`; `seq` и `hall_id` в прямых ответах WS; ответ `/healthz`; зависимость `golang.org/x/crypto`; команды `cmd/migrate`, `cmd/seed`, `cmd/devtoken`; папка `/deploy`; `TEST_DATABASE_URL`.
+- v3 — раздел 19.2: зависимости клиента на Expo SDK 57, переменные `EXPO_PUBLIC_*`, раскладка роутов, доставка событий хабом всем подпискам заведения, пакет `storetest`, UTC в ответах.
 
 Правила работы с этим файлом:
 
@@ -1195,3 +1196,42 @@ create unique index staff_venue_name_key on staff (venue_id, lower(display_name)
 `seed` — пакет с функцией `Seed(ctx, pool) (Fixture, error)`, ей пользуются и `cmd/seed`, и интеграционные тесты.
 
 **Конфиг** (дополняет раздел 14): `.env.example` получает `TEST_DATABASE_URL=postgres://hookah:hookah@localhost:5432/hookah_test?sslmode=disable`. Интеграционные тесты пропускаются через `t.Skip`, если переменная пуста, в CI она задана всегда.
+
+### 19.2. v3: клиент скелета, доставка WS
+
+**Зависимости клиента** (дополняют раздел 3). Expo SDK 57, React Native 0.86, React 19.2, TypeScript 6. Версии ставит `npx expo install`, совместимые с SDK.
+
+- Рантайм: `expo-crypto` (UUID для `device_id` и `Idempotency-Key`), `expo-device` (пуш-токен только на физическом устройстве), `expo-constants`, `expo-linking`, `expo-status-bar`, `react-native-safe-area-context`, `react-native-screens` (обязательные пиры `expo-router`), `react-dom` (пир `expo-router`, в сборку под iOS и Android не попадает).
+- Разработка: `typescript`, `@types/react`, `jest`, `jest-expo` (пресет), `@types/jest`, `eslint`, `eslint-config-expo`.
+
+**Конфиг клиента.** `app/.env.example`:
+
+```
+EXPO_PUBLIC_API_URL=http://192.168.1.10:8080
+EXPO_PUBLIC_DEV_ACCESS_TOKEN=
+```
+
+WS-адрес выводится из `EXPO_PUBLIC_API_URL` заменой схемы `http` на `ws`. `EXPO_PUBLIC_DEV_ACCESS_TOKEN` читается только при `__DEV__` и только если в `expo-secure-store` нет сессии: это вход слайса 0 до появления `join`. Значение печатает `make devtoken`.
+
+**Роуты** (уточняют раздел 12):
+
+```
+app/_layout.tsx               корневой Stack, гард авторизации, запуск WS
+app/join.tsx
+app/(hall)/_layout.tsx        Tabs: index «Зал», tasks «Задачи»
+app/(hall)/index.tsx
+app/(hall)/tasks.tsx
+app/(hall)/table/[id].tsx     модальный экран поверх табов
+app/settings/_layout.tsx      Stack, только owner и admin
+app/kitchen-sink.tsx          доступен только при __DEV__
+```
+
+Гард: нет сессии → `join`, есть сессия → `(hall)`.
+
+**Доставка WS-событий.** Хаб рассылает каждое событие заведения всем соединениям заведения, у которых была подписка, независимо от зала. Поэтому `seq` у каждого соединения идёт без дыр. Клиент отслеживает `seq` по всем событиям, а в стор применяет только события своего зала и события уровня заведения (`hall_id = null`). Комната `hall_id` определяет, чей снапшот получает соединение и кто попадает в `staff_online`.
+
+События, опубликованные, пока сервер читает снапшот, приходят сразу после снапшота, если их `seq` больше `seq` снапшота. Эффект такого события уже может быть в снапшоте, поэтому редьюсер применяет события идемпотентно.
+
+**Интеграционные тесты сервера.** Пакет `internal/store/storetest` создаёт на каждый тест отдельную БД клоном мигрированного шаблона `hookah_template`. Пакеты гоняются параллельно без общей БД.
+
+**Время в ответах.** Все временные поля в HTTP и WS сериализуются в UTC с суффиксом `Z`.
