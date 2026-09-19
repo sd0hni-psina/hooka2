@@ -34,7 +34,7 @@ type ValidationError struct {
 	Fields map[string]string
 }
 
-func (e *ValidationError) Error() string { return "validation failed" }
+func (e *ValidationError) Error() string        { return "validation failed" }
 func (e *ValidationError) Is(target error) bool { return target == ErrValidation }
 
 // Add records the first reason for a field; later reasons for the same field are ignored.
@@ -70,5 +70,5 @@ type PlanError struct {
 	Reason string
 }
 
-func (e *PlanError) Error() string       { return "plan invalid: " + e.Field + ": " + e.Reason }
+func (e *PlanError) Error() string        { return "plan invalid: " + e.Field + ": " + e.Reason }
 func (e *PlanError) Is(target error) bool { return target == ErrPlanInvalid }

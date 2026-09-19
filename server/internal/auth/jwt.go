@@ -68,7 +68,7 @@ func (t *Tokens) Parse(raw string, now time.Time) (Claims, error) {
 		jwt.WithExpirationRequired(),
 	)
 	if err != nil {
-		return Claims{}, fmt.Errorf("parse access token: %v: %w", err, domain.ErrUnauthorized)
+		return Claims{}, fmt.Errorf("parse access token: %w: %w", domain.ErrUnauthorized, err)
 	}
 	if c.Subject == "" || c.VenueID == "" || c.SessionID == "" || !c.Role.Valid() {
 		return Claims{}, fmt.Errorf("parse access token: %w", errors.Join(errors.New("missing claims"), domain.ErrUnauthorized))

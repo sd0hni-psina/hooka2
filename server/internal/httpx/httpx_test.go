@@ -82,7 +82,7 @@ func TestDecodeRejectsUnknownFields(t *testing.T) {
 	var v struct {
 		Name string `json:"name"`
 	}
-	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"name":"a","nmae":"b"}`))
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"name":"a","extra":"b"}`))
 	require.ErrorIs(t, Decode(req, &v), domain.ErrValidation)
 }
 

@@ -42,5 +42,5 @@ func Decode(r *http.Request, v any) error {
 func bodyError(err error) error {
 	v := &domain.ValidationError{}
 	v.Add("body", domain.ReasonInvalid)
-	return fmt.Errorf("decode body: %v: %w", err, v)
+	return fmt.Errorf("decode body: %w: %w", v, err)
 }

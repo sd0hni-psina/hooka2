@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -36,7 +37,11 @@ func Open(t testing.TB) *pgxpool.Pool {
 	if err != nil {
 		t.Fatalf("connect admin: %v", err)
 	}
-	defer admin.Close(ctx)
+	defer func() {
+		if err := admin.Close(ctx); err != nil {
+			t.Logf("close admin: %v", err)
+		}
+	}()
 
 	name := "hookah_t_" + randomSuffix(t)
 	if err := cloneTemplate(ctx, admin, base, name); err != nil {
@@ -54,7 +59,11 @@ func Open(t testing.TB) *pgxpool.Pool {
 			t.Logf("drop %s: %v", name, err)
 			return
 		}
-		defer conn.Close(context.Background())
+		defer func() {
+			if err := conn.Close(context.Background()); err != nil {
+				t.Logf("close admin: %v", err)
+			}
+		}()
 		if _, err := conn.Exec(context.Background(), `drop database if exists `+name+` with (force)`); err != nil {
 			t.Logf("drop %s: %v", name, err)
 		}
@@ -99,8 +108,7 @@ func cloneTemplate(ctx context.Context, admin *pgx.Conn, base, name string) erro
 		return err
 	}
 	if err := goose.UpContext(ctx, db, "."); err != nil {
-		db.Close()
-		return err
+		return errors.Join(err, db.Close())
 	}
 	if err := db.Close(); err != nil {
 		return err

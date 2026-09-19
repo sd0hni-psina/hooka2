@@ -58,7 +58,7 @@ func (e env) get(t *testing.T, token string) (*http.Response, map[string]any) {
 	}
 	res, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	defer res.Body.Close()
+	defer func() { require.NoError(t, res.Body.Close()) }()
 	var body map[string]any
 	require.NoError(t, json.NewDecoder(res.Body).Decode(&body))
 	return res, body

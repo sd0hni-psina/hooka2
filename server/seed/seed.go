@@ -19,7 +19,7 @@ import (
 const (
 	JoinCode      = "1234"
 	OwnerEmail    = "owner@hookah.dev"
-	OwnerPassword = "hookah-dev-pass"
+	OwnerPassword = "hookah-dev-pass" //nolint:gosec // public dev fixture, never used in prod
 	OwnerName     = "Арсен"
 )
 
