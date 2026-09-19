@@ -73,3 +73,12 @@ func TestValidationErrorKeepsFirstReason(t *testing.T) {
 	require.ErrorIs(t, v.Err(), ErrValidation)
 	require.Equal(t, map[string]string{"email": ReasonRequired}, v.Fields)
 }
+
+func TestValidUUID(t *testing.T) {
+	require.True(t, ValidUUID("0b6f1c9e-8f0a-4c43-9d59-1f1f7c1b2a3d"))
+	require.True(t, ValidUUID("0B6F1C9E-8F0A-4C43-9D59-1F1F7C1B2A3D"))
+	require.False(t, ValidUUID(""))
+	require.False(t, ValidUUID("15"))
+	require.False(t, ValidUUID("0b6f1c9e08f0a-4c43-9d59-1f1f7c1b2a3d"))
+	require.False(t, ValidUUID("zb6f1c9e-8f0a-4c43-9d59-1f1f7c1b2a3d"))
+}

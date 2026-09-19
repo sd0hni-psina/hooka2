@@ -125,3 +125,88 @@ func DecideConfirm(hookah HookahState, ev ServiceEvent, all []ServiceEvent) (Con
 	}
 	return 0, ErrEventNotActionable
 }
+
+type Platform string
+
+const (
+	PlatformIOS     Platform = "ios"
+	PlatformAndroid Platform = "android"
+)
+
+func (p Platform) Valid() bool { return p == PlatformIOS || p == PlatformAndroid }
+
+type Shape string
+
+const (
+	ShapeRect   Shape = "rect"
+	ShapeCircle Shape = "circle"
+)
+
+func (s Shape) Valid() bool { return s == ShapeRect || s == ShapeCircle }
+
+type Venue struct {
+	ID       string  `json:"id"`
+	Name     string  `json:"name"`
+	Timezone string  `json:"timezone"`
+	JoinCode *string `json:"join_code"`
+}
+
+// ForRole hides the join code from masters, tech.md section 19.1.
+func (v Venue) ForRole(r Role) Venue {
+	if !r.CanManage() {
+		v.JoinCode = nil
+	}
+	return v
+}
+
+type Hall struct {
+	ID        string `json:"id"`
+	VenueID   string `json:"venue_id"`
+	Name      string `json:"name"`
+	SortOrder int    `json:"sort_order"`
+}
+
+type Staff struct {
+	ID          string     `json:"id"`
+	VenueID     string     `json:"venue_id"`
+	DisplayName string     `json:"display_name"`
+	Role        Role       `json:"role"`
+	Blocked     bool       `json:"blocked"`
+	CreatedAt   time.Time  `json:"created_at"`
+	LastSeenAt  *time.Time `json:"last_seen_at"`
+}
+
+type Table struct {
+	ID       string `json:"id"`
+	HallID   string `json:"hall_id"`
+	Label    string `json:"label"`
+	Shape    Shape  `json:"shape"`
+	X        int    `json:"x"`
+	Y        int    `json:"y"`
+	W        int    `json:"w"`
+	H        int    `json:"h"`
+	Rotation int    `json:"rotation"`
+	Seats    int    `json:"seats"`
+}
+
+// ValidUUID checks the canonical 8-4-4-4-12 hex form. Services treat a
+// malformed id as not found instead of letting Postgres reject the cast.
+func ValidUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch i {
+		case 8, 13, 18, 23:
+			if c != '-' {
+				return false
+			}
+		default:
+			if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
+				return false
+			}
+		}
+	}
+	return true
+}
