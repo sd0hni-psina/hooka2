@@ -214,3 +214,9 @@ func ValidUUID(s string) bool {
 func isHex(c byte) bool {
 	return c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F'
 }
+
+type Tokens struct {
+	AccessToken     string    `json:"access_token"`
+	RefreshToken    string    `json:"refresh_token"`
+	AccessExpiresAt time.Time `json:"access_expires_at"`
+}

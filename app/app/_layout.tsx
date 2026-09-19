@@ -5,6 +5,7 @@ import { StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { registerPush } from '../src/features/notifications/registerPush';
 import { useAuthStore } from '../src/store/auth';
 import { Spinner } from '../src/ui';
 import { color } from '../src/ui/tokens';
@@ -12,6 +13,8 @@ import { color } from '../src/ui/tokens';
 // Auth guard, tech.md section 19.2: no session goes to join, a session goes to the hall.
 function useAuthGuard() {
   const status = useAuthStore((s) => s.status);
+  // Signed in but no hall picked yet: stay on join for the hall choice.
+  const needsHall = useAuthStore((s) => s.hallId === null && (s.me?.halls.length ?? 0) > 0);
   const segments = useSegments();
   const router = useRouter();
 
@@ -25,8 +28,14 @@ function useAuthGuard() {
     const inJoin = first === 'join';
     const inDevTools = first === 'kitchen-sink';
     if (status === 'signedOut' && !inJoin && !inDevTools) router.replace('/join');
-    if (status === 'signedIn' && inJoin) router.replace('/');
-  }, [status, segments, router]);
+    if (status === 'signedIn' && inJoin && !needsHall) router.replace('/');
+    if (status === 'signedIn' && !inJoin && !inDevTools && needsHall) router.replace('/join');
+  }, [status, needsHall, segments, router]);
+
+  useEffect(() => {
+    if (status !== 'signedIn') return;
+    registerPush().catch(() => undefined);
+  }, [status]);
 
   return status;
 }

@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { ApiError, NetworkError } from '../../src/api/errors';
@@ -7,7 +7,7 @@ import { t } from '../../src/i18n/ru';
 import { useAuthStore } from '../../src/store/auth';
 import { useHallStore } from '../../src/store/hall';
 import { statusesAt } from '../../src/store/selectors';
-import { AppBar, Badge, Card, EmptyState, HallCanvas, IconButton, Screen, Spinner, Text, useServerNow } from '../../src/ui';
+import { AppBar, Badge, Button, Card, ConfirmDialog, EmptyState, HallCanvas, IconButton, Screen, Spinner, Text, useServerNow } from '../../src/ui';
 import { space } from '../../src/ui/tokens';
 import { clockOffset, isClockSynced } from '../../src/ws/clock';
 
@@ -25,6 +25,7 @@ export default function HallScreen() {
   const data = useHallStore((s) => s);
   const now = useServerNow();
   const statuses = useMemo(() => statusesAt(data, now), [data, now]);
+  const [confirmLogout, setConfirmLogout] = useState(false);
 
   if (!me) {
     const message = error instanceof NetworkError ? t.errors.network : error instanceof ApiError ? error.message : t.me.loadFailed;
@@ -56,7 +57,20 @@ export default function HallScreen() {
           {isClockSynced() ? <Badge title={t.hall.clockOffset(Math.round(clockOffset() / 1000))} tone="neutral" icon="clock" /> : null}
           {data.seq !== null ? <Badge title={t.hall.seq(data.seq)} tone="neutral" /> : null}
         </View>
+        <Button title={t.logout.action} variant="ghost" size="md" icon="close" onPress={() => setConfirmLogout(true)} />
       </Card>
+      <ConfirmDialog
+        visible={confirmLogout}
+        title={t.logout.title}
+        message={t.logout.message}
+        confirmTitle={t.logout.action}
+        destructive
+        onConfirm={() => {
+          setConfirmLogout(false);
+          void useAuthStore.getState().signOut();
+        }}
+        onCancel={() => setConfirmLogout(false)}
+      />
       {me.halls.length === 0 ? (
         <EmptyState icon="grid" title={t.hall.noHalls} message={t.hall.noHallsHint} />
       ) : data.state ? (

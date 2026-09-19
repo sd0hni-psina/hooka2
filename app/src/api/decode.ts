@@ -2,7 +2,7 @@
 // A mismatch throws DecodeError, which callers treat like a server error.
 import type {
   EventKind, EventState, Envelope, Hall, HallState, Hookah, HookahState, Me, OnlineStaff,
-  Plan, PlanStep, Role, Shape, ServiceEvent, Staff, Table, TableStatus, Venue,
+  Plan, PlanStep, Role, Shape, ServiceEvent, Staff, Table, TableStatus, Tokens, Venue,
 } from './types';
 
 export class DecodeError extends Error {
@@ -164,4 +164,34 @@ export function decodeEnvelope(u: unknown): Envelope {
     ts: str(o, 'ts', 'envelope'), venue_id: str(o, 'venue_id', 'envelope'),
     hall_id: nstr(o, 'hall_id', 'envelope'), data: o.data,
   };
+}
+
+export function decodeTokens(u: unknown, p = 'tokens'): Tokens {
+  const o = obj(u, p);
+  return { access_token: str(o, 'access_token', p), refresh_token: str(o, 'refresh_token', p), access_expires_at: str(o, 'access_expires_at', p) };
+}
+
+export type AuthResult = { tokens: Tokens; venue: Venue };
+export type JoinResult = AuthResult & { halls: Hall[] };
+
+export function decodeAuthResult(u: unknown): AuthResult {
+  const o = obj(u, 'auth');
+  return { tokens: decodeTokens(o.tokens), venue: decodeVenue(o.venue) };
+}
+
+export function decodeJoinResult(u: unknown): JoinResult {
+  const o = obj(u, 'join');
+  return { ...decodeAuthResult(u), halls: arr(o, 'halls', 'join', decodeHall) };
+}
+
+export function decodeRefresh(u: unknown): Tokens {
+  return decodeTokens(obj(u, 'refresh').tokens);
+}
+
+export function decodeNothing(): void {
+  return undefined;
+}
+
+export function decodeJoinCode(u: unknown): string {
+  return str(obj(u, 'rotate'), 'join_code', 'rotate');
 }

@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"hookah/server/internal/account"
 	"hookah/server/internal/auth"
 	"hookah/server/internal/config"
 	"hookah/server/internal/hookah"
@@ -62,16 +63,20 @@ func run(cfg config.Config, log *slog.Logger) error {
 	staffRepo := staff.NewRepository()
 	hookahRepo := hookah.NewRepository()
 
-	staffSvc := staff.NewService(pool, staffRepo, venueRepo, layoutRepo)
-	hookahSvc := hookah.NewService(pool, hookahRepo, layoutRepo, venueRepo, staffRepo)
-
 	tokens := auth.NewTokens(cfg.JWTSecret, cfg.AccessTTL)
+	staffSvc := staff.NewService(pool, staffRepo, venueRepo, layoutRepo, tokens, cfg.RefreshTTL)
+	hookahSvc := hookah.NewService(pool, hookahRepo, layoutRepo, venueRepo, staffRepo)
+	venueSvc := venue.NewService(pool, venueRepo)
+	accountSvc := account.NewService(pool, account.NewRepository(), staffRepo, staffSvc, venueRepo, venueSvc)
+
 	guard := auth.NewGuard(tokens, staffSvc, httpx.WriteError)
 	hub := realtime.NewHub(log)
 
 	router := httpx.NewRouter(guard.Middleware)
 	router.Raw("GET /healthz", httpx.Health(pool))
 	staff.NewHandler(staffSvc).Register(router)
+	account.NewHandler(accountSvc).Register(router)
+	venue.NewHandler(venueSvc).Register(router)
 	realtime.NewHandler(hub, guard, hookah.Snapshots{Svc: hookahSvc}, cfg.CORSOrigins, log).Register(router)
 
 	srv := &http.Server{
