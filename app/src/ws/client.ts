@@ -111,6 +111,9 @@ export class WsClient {
     try {
       msg = parseMessage(raw);
     } catch {
+      // A message this build cannot read leaves a hole in seq, so rebase on a
+      // fresh snapshot instead of drifting.
+      this.sendSubscribe();
       return;
     }
     const received = localClock();

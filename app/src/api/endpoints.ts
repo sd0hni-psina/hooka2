@@ -1,9 +1,10 @@
 import { request } from './client';
 import {
-  decodeAuthResult, decodeJoinCode, decodeJoinResult, decodeMe, decodeNothing, decodeRefresh,
-  type AuthResult, type JoinResult,
+  arr, decodeAuthResult, decodeHall, decodeJoinCode, decodeJoinResult, decodeMe, decodeNothing, decodeRefresh,
+  decodeTable, type AuthResult, type JoinResult,
 } from './decode';
-import type { Me, Platform, Tokens } from './types';
+import type { Placement } from '../domain/layout';
+import type { Hall, Me, Platform, Shape, Table, Tokens } from './types';
 
 export type DeviceInfo = { device_id: string; platform: Platform };
 
@@ -40,4 +41,43 @@ export function registerPushToken(token: string): Promise<void> {
 
 export function rotateCode(): Promise<string> {
   return request('POST', '/venues/current/rotate-code', decodeJoinCode);
+}
+
+export function createHall(name: string, sortOrder: number): Promise<Hall> {
+  return request('POST', '/halls', decodeHall, { body: { name, sort_order: sortOrder } });
+}
+
+export function updateHall(hallId: string, patch: { name?: string; sort_order?: number }): Promise<Hall> {
+  return request('PATCH', `/halls/${hallId}`, decodeHall, { body: patch });
+}
+
+export function deleteHall(hallId: string): Promise<void> {
+  return request('DELETE', `/halls/${hallId}`, decodeNothing);
+}
+
+export type TableInput = {
+  label: string;
+  shape: Shape;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  rotation: number;
+  seats: number;
+};
+
+export function createTable(hallId: string, table: TableInput): Promise<Table> {
+  return request('POST', `/halls/${hallId}/tables`, decodeTable, { body: table });
+}
+
+export function patchTable(tableId: string, patch: Partial<TableInput> & { archived?: boolean }): Promise<Table> {
+  return request('PATCH', `/tables/${tableId}`, decodeTable, { body: patch });
+}
+
+export function archiveTable(tableId: string): Promise<void> {
+  return request('DELETE', `/tables/${tableId}`, decodeNothing);
+}
+
+export function setLayout(hallId: string, tables: Placement[]): Promise<Table[]> {
+  return request('PUT', `/halls/${hallId}/layout`, (u) => arr({ tables: u }, 'tables', 'layout', decodeTable), { body: { tables } });
 }
