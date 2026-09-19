@@ -1,0 +1,113 @@
+{
+  "cases": [
+    {
+      "name": "default plan merges shake into replace at 30 and 60 minutes",
+      "started_at": "2026-09-19T18:00:00Z",
+      "plan": {
+        "version": 1,
+        "steps": [
+          { "kind": "check", "title": "Проверьте кальян и узнайте у гостя, всё ли хорошо", "offset_sec": 300 },
+          { "kind": "shake", "title": "Стряхните угли", "offset_sec": 900, "repeat_every_sec": 900 },
+          { "kind": "replace", "title": "Замените угли", "offset_sec": 1800, "repeat_every_sec": 1800 },
+          { "kind": "expire", "title": "Кальян отработал ресурс", "offset_sec": 4800 }
+        ],
+        "warn_before_sec": 60, "grace_sec": 120, "missed_after_sec": 600, "push_repeat_sec": 120, "push_max_attempts": 3
+      },
+      "expected": [
+        { "seq": 1, "kind": "check", "title": "Проверьте кальян и узнайте у гостя, всё ли хорошо", "due_at": "2026-09-19T18:05:00Z" },
+        { "seq": 2, "kind": "shake", "title": "Стряхните угли", "due_at": "2026-09-19T18:15:00Z" },
+        { "seq": 3, "kind": "replace", "title": "Замените угли", "due_at": "2026-09-19T18:30:00Z" },
+        { "seq": 4, "kind": "shake", "title": "Стряхните угли", "due_at": "2026-09-19T18:45:00Z" },
+        { "seq": 5, "kind": "replace", "title": "Замените угли", "due_at": "2026-09-19T19:00:00Z" },
+        { "seq": 6, "kind": "shake", "title": "Стряхните угли", "due_at": "2026-09-19T19:15:00Z" },
+        { "seq": 7, "kind": "expire", "title": "Кальян отработал ресурс", "due_at": "2026-09-19T19:20:00Z" }
+      ]
+    },
+    {
+      "name": "expire only plan yields a single event",
+      "started_at": "2026-09-19T18:00:00Z",
+      "plan": {
+        "version": 1,
+        "steps": [ { "kind": "expire", "title": "Конец", "offset_sec": 600 } ],
+        "warn_before_sec": 0, "grace_sec": 30, "missed_after_sec": 60, "push_repeat_sec": 120, "push_max_attempts": 1
+      },
+      "expected": [
+        { "seq": 1, "kind": "expire", "title": "Конец", "due_at": "2026-09-19T18:10:00Z" }
+      ]
+    },
+    {
+      "name": "check beats custom in the same second",
+      "started_at": "2026-09-19T18:00:00Z",
+      "plan": {
+        "version": 1,
+        "steps": [
+          { "kind": "custom", "title": "Смените мундштук", "offset_sec": 120, "repeat_every_sec": 120 },
+          { "kind": "check", "title": "Проверьте", "offset_sec": 240 },
+          { "kind": "expire", "title": "Конец", "offset_sec": 600 }
+        ],
+        "warn_before_sec": 60, "grace_sec": 120, "missed_after_sec": 600, "push_repeat_sec": 120, "push_max_attempts": 3
+      },
+      "expected": [
+        { "seq": 1, "kind": "custom", "title": "Смените мундштук", "due_at": "2026-09-19T18:02:00Z" },
+        { "seq": 2, "kind": "check", "title": "Проверьте", "due_at": "2026-09-19T18:04:00Z" },
+        { "seq": 3, "kind": "custom", "title": "Смените мундштук", "due_at": "2026-09-19T18:06:00Z" },
+        { "seq": 4, "kind": "custom", "title": "Смените мундштук", "due_at": "2026-09-19T18:08:00Z" },
+        { "seq": 5, "kind": "expire", "title": "Конец", "due_at": "2026-09-19T18:10:00Z" }
+      ]
+    },
+    {
+      "name": "step order in the plan does not change the output order",
+      "started_at": "2026-09-19T23:59:00Z",
+      "plan": {
+        "version": 1,
+        "steps": [
+          { "kind": "expire", "title": "Конец", "offset_sec": 1000 },
+          { "kind": "shake", "title": "Стряхните", "offset_sec": 300, "repeat_every_sec": 200 },
+          { "kind": "check", "title": "Проверьте", "offset_sec": 60 }
+        ],
+        "warn_before_sec": 60, "grace_sec": 120, "missed_after_sec": 600, "push_repeat_sec": 120, "push_max_attempts": 3
+      },
+      "expected": [
+        { "seq": 1, "kind": "check", "title": "Проверьте", "due_at": "2026-09-20T00:00:00Z" },
+        { "seq": 2, "kind": "shake", "title": "Стряхните", "due_at": "2026-09-20T00:04:00Z" },
+        { "seq": 3, "kind": "shake", "title": "Стряхните", "due_at": "2026-09-20T00:07:20Z" },
+        { "seq": 4, "kind": "shake", "title": "Стряхните", "due_at": "2026-09-20T00:10:40Z" },
+        { "seq": 5, "kind": "shake", "title": "Стряхните", "due_at": "2026-09-20T00:14:00Z" },
+        { "seq": 6, "kind": "expire", "title": "Конец", "due_at": "2026-09-20T00:15:40Z" }
+      ]
+    },
+    {
+      "name": "repeat landing exactly on expire is dropped",
+      "started_at": "2026-09-19T18:00:00Z",
+      "plan": {
+        "version": 1,
+        "steps": [
+          { "kind": "shake", "title": "Стряхните", "offset_sec": 600, "repeat_every_sec": 600 },
+          { "kind": "expire", "title": "Конец", "offset_sec": 1200 }
+        ],
+        "warn_before_sec": 60, "grace_sec": 120, "missed_after_sec": 600, "push_repeat_sec": 120, "push_max_attempts": 3
+      },
+      "expected": [
+        { "seq": 1, "kind": "shake", "title": "Стряхните", "due_at": "2026-09-19T18:10:00Z" },
+        { "seq": 2, "kind": "expire", "title": "Конец", "due_at": "2026-09-19T18:20:00Z" }
+      ]
+    },
+    {
+      "name": "same kind in the same second keeps the earlier step",
+      "started_at": "2026-09-19T18:00:00Z",
+      "plan": {
+        "version": 1,
+        "steps": [
+          { "kind": "custom", "title": "A", "offset_sec": 300 },
+          { "kind": "custom", "title": "B", "offset_sec": 300 },
+          { "kind": "expire", "title": "Конец", "offset_sec": 900 }
+        ],
+        "warn_before_sec": 60, "grace_sec": 120, "missed_after_sec": 600, "push_repeat_sec": 120, "push_max_attempts": 3
+      },
+      "expected": [
+        { "seq": 1, "kind": "custom", "title": "A", "due_at": "2026-09-19T18:05:00Z" },
+        { "seq": 2, "kind": "expire", "title": "Конец", "due_at": "2026-09-19T18:15:00Z" }
+      ]
+    }
+  ]
+}
