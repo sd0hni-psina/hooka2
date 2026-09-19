@@ -10,7 +10,8 @@ function snapshot(seq: number, hall = hallId): ParsedMessage {
   return parseMessage(JSON.stringify({ ...snapshotFixture, seq, hall_id: hall }));
 }
 
-function event(seq: number, hall: string | null = hallId, type = 'hookah.expired'): ParsedMessage {
+// A type this build does not know: the reducer must still track its seq.
+function event(seq: number, hall: string | null = hallId, type = 'venue.pinged'): ParsedMessage {
   const env: Envelope = { v: 1, type, seq, ts: '2026-09-19T18:05:00Z', venue_id: snapshotFixture.venue_id, hall_id: hall, data: {} };
   return parseMessage(JSON.stringify(env));
 }

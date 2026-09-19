@@ -138,6 +138,229 @@
     },
     {
       "v": 1,
+      "type": "hookah.started",
+      "seq": 43,
+      "ts": "2026-09-19T18:05:00.000Z",
+      "venue_id": "5b0d6a1e-2f7c-4c1a-9a51-6f3e8e2b7c10",
+      "hall_id": "8f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+      "data": {
+        "hookah": {
+          "id": "c0ffee00-0000-4000-8000-000000000001",
+          "table_id": "a1b2c3d4-0000-4000-8000-000000000015",
+          "hall_id": "8f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+          "state": "active",
+          "started_at": "2026-09-19T17:48:05Z",
+          "expires_at": "2026-09-19T19:08:05Z",
+          "finished_at": null,
+          "started_by": "5aff0000-0000-4000-8000-000000000002",
+          "started_by_name": "Айдос",
+          "status": "green",
+          "events": [
+            {
+              "id": "e0000000-0000-4000-8000-000000000001",
+              "hookah_id": "c0ffee00-0000-4000-8000-000000000001",
+              "seq": 1,
+              "kind": "check",
+              "title": "Проверьте кальян и узнайте у гостя, всё ли хорошо",
+              "due_at": "2026-09-19T17:53:05Z",
+              "state": "pending",
+              "claimed_by": null,
+              "claimed_by_name": null,
+              "claimed_at": null,
+              "confirmed_by": null,
+              "confirmed_by_name": null,
+              "confirmed_at": null,
+              "confirmed_early": false
+            },
+            {
+              "id": "e0000000-0000-4000-8000-000000000002",
+              "hookah_id": "c0ffee00-0000-4000-8000-000000000001",
+              "seq": 2,
+              "kind": "shake",
+              "title": "Стряхните угли",
+              "due_at": "2026-09-19T18:03:05Z",
+              "state": "due",
+              "claimed_by": null,
+              "claimed_by_name": null,
+              "claimed_at": null,
+              "confirmed_by": null,
+              "confirmed_by_name": null,
+              "confirmed_at": null,
+              "confirmed_early": false
+            }
+          ]
+        },
+        "events": [
+          {
+            "id": "e0000000-0000-4000-8000-000000000001",
+            "hookah_id": "c0ffee00-0000-4000-8000-000000000001",
+            "seq": 1,
+            "kind": "check",
+            "title": "Проверьте кальян и узнайте у гостя, всё ли хорошо",
+            "due_at": "2026-09-19T17:53:05Z",
+            "state": "pending",
+            "claimed_by": null,
+            "claimed_by_name": null,
+            "claimed_at": null,
+            "confirmed_by": null,
+            "confirmed_by_name": null,
+            "confirmed_at": null,
+            "confirmed_early": false
+          },
+          {
+            "id": "e0000000-0000-4000-8000-000000000002",
+            "hookah_id": "c0ffee00-0000-4000-8000-000000000001",
+            "seq": 2,
+            "kind": "shake",
+            "title": "Стряхните угли",
+            "due_at": "2026-09-19T18:03:05Z",
+            "state": "due",
+            "claimed_by": null,
+            "claimed_by_name": null,
+            "claimed_at": null,
+            "confirmed_by": null,
+            "confirmed_by_name": null,
+            "confirmed_at": null,
+            "confirmed_early": false
+          }
+        ],
+        "status": "green"
+      }
+    },
+    {
+      "v": 1,
+      "type": "hookah.transferred",
+      "seq": 44,
+      "ts": "2026-09-19T18:05:00.000Z",
+      "venue_id": "5b0d6a1e-2f7c-4c1a-9a51-6f3e8e2b7c10",
+      "hall_id": "8f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+      "data": {
+        "hookah": {
+          "id": "c0ffee00-0000-4000-8000-000000000001",
+          "table_id": "a1b2c3d4-0000-4000-8000-000000000015",
+          "hall_id": "8f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+          "state": "active",
+          "started_at": "2026-09-19T17:48:05Z",
+          "expires_at": "2026-09-19T19:08:05Z",
+          "finished_at": null,
+          "started_by": "5aff0000-0000-4000-8000-000000000002",
+          "started_by_name": "Айдос",
+          "status": "green",
+          "events": [
+            {
+              "id": "e0000000-0000-4000-8000-000000000001",
+              "hookah_id": "c0ffee00-0000-4000-8000-000000000001",
+              "seq": 1,
+              "kind": "check",
+              "title": "Проверьте кальян и узнайте у гостя, всё ли хорошо",
+              "due_at": "2026-09-19T17:53:05Z",
+              "state": "pending",
+              "claimed_by": null,
+              "claimed_by_name": null,
+              "claimed_at": null,
+              "confirmed_by": null,
+              "confirmed_by_name": null,
+              "confirmed_at": null,
+              "confirmed_early": false
+            },
+            {
+              "id": "e0000000-0000-4000-8000-000000000002",
+              "hookah_id": "c0ffee00-0000-4000-8000-000000000001",
+              "seq": 2,
+              "kind": "shake",
+              "title": "Стряхните угли",
+              "due_at": "2026-09-19T18:03:05Z",
+              "state": "due",
+              "claimed_by": null,
+              "claimed_by_name": null,
+              "claimed_at": null,
+              "confirmed_by": null,
+              "confirmed_by_name": null,
+              "confirmed_at": null,
+              "confirmed_early": false
+            }
+          ]
+        },
+        "from_table_id": "a1b2c3d4-0000-4000-8000-000000000015",
+        "to_table_id": "a1b2c3d4-0000-4000-8000-000000000022",
+        "moved_by": "5aff0000-0000-4000-8000-000000000001",
+        "moved_by_name": "Ерлан",
+        "status": "green"
+      }
+    },
+    {
+      "v": 1,
+      "type": "hookah.expired",
+      "seq": 45,
+      "ts": "2026-09-19T18:05:00.000Z",
+      "venue_id": "5b0d6a1e-2f7c-4c1a-9a51-6f3e8e2b7c10",
+      "hall_id": "8f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+      "data": {
+        "hookah_id": "c0ffee00-0000-4000-8000-000000000001",
+        "table_id": "a1b2c3d4-0000-4000-8000-000000000015",
+        "status": "red"
+      }
+    },
+    {
+      "v": 1,
+      "type": "hookah.finished",
+      "seq": 46,
+      "ts": "2026-09-19T18:05:00.000Z",
+      "venue_id": "5b0d6a1e-2f7c-4c1a-9a51-6f3e8e2b7c10",
+      "hall_id": "8f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+      "data": {
+        "hookah_id": "c0ffee00-0000-4000-8000-000000000001",
+        "table_id": "a1b2c3d4-0000-4000-8000-000000000015",
+        "reason": "guest_left",
+        "finished_by": "5aff0000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "v": 1,
+      "type": "service.due",
+      "seq": 47,
+      "ts": "2026-09-19T18:05:00.000Z",
+      "venue_id": "5b0d6a1e-2f7c-4c1a-9a51-6f3e8e2b7c10",
+      "hall_id": "8f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+      "data": {
+        "event": {
+          "id": "e0000000-0000-4000-8000-000000000002",
+          "hookah_id": "c0ffee00-0000-4000-8000-000000000001",
+          "seq": 2,
+          "kind": "shake",
+          "title": "Стряхните угли",
+          "due_at": "2026-09-19T18:03:05Z",
+          "state": "due",
+          "claimed_by": null,
+          "claimed_by_name": null,
+          "claimed_at": null,
+          "confirmed_by": null,
+          "confirmed_by_name": null,
+          "confirmed_at": null,
+          "confirmed_early": false
+        },
+        "hookah_id": "c0ffee00-0000-4000-8000-000000000001",
+        "table_id": "a1b2c3d4-0000-4000-8000-000000000015",
+        "table_label": "15",
+        "status": "yellow"
+      }
+    },
+    {
+      "v": 1,
+      "type": "service.missed",
+      "seq": 48,
+      "ts": "2026-09-19T18:05:00.000Z",
+      "venue_id": "5b0d6a1e-2f7c-4c1a-9a51-6f3e8e2b7c10",
+      "hall_id": "8f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+      "data": {
+        "event_id": "e0000000-0000-4000-8000-000000000002",
+        "hookah_id": "c0ffee00-0000-4000-8000-000000000001",
+        "table_id": "a1b2c3d4-0000-4000-8000-000000000015",
+        "status": "red"
+      }
+    },
+    {
+      "v": 1,
       "type": "pong",
       "seq": 41,
       "ts": "2026-09-19T18:04:06Z",

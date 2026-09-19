@@ -1,10 +1,10 @@
 import { request } from './client';
 import {
-  arr, decodeAuthResult, decodeHall, decodeJoinCode, decodeJoinResult, decodeMe, decodeNothing, decodeRefresh,
-  decodeTable, type AuthResult, type JoinResult,
+  arr, decodeAuthResult, decodeHall, decodeHallState, decodeHookah, decodeJoinCode, decodeJoinResult, decodeMe,
+  decodeNothing, decodeRefresh, decodeTable, type AuthResult, type JoinResult,
 } from './decode';
 import type { Placement } from '../domain/layout';
-import type { Hall, Me, Platform, Shape, Table, Tokens } from './types';
+import type { FinishReason, Hall, HallState, Hookah, Me, Platform, Shape, Table, Tokens } from './types';
 
 export type DeviceInfo = { device_id: string; platform: Platform };
 
@@ -80,4 +80,21 @@ export function archiveTable(tableId: string): Promise<void> {
 
 export function setLayout(hallId: string, tables: Placement[]): Promise<Table[]> {
   return request('PUT', `/halls/${hallId}/layout`, (u) => arr({ tables: u }, 'tables', 'layout', decodeTable), { body: { tables } });
+}
+
+export function getHallState(hallId: string): Promise<HallState> {
+  return request('GET', `/halls/${hallId}/state`, decodeHallState);
+}
+
+// startHookah must carry the same key on every retry, tech.md section 19.8.
+export function startHookah(tableId: string, idempotencyKey: string): Promise<Hookah> {
+  return request('POST', `/tables/${tableId}/hookah`, decodeHookah, { headers: { 'Idempotency-Key': idempotencyKey } });
+}
+
+export function transferHookah(hookahId: string, toTableId: string): Promise<Hookah> {
+  return request('POST', `/hookahs/${hookahId}/transfer`, decodeHookah, { body: { to_table_id: toTableId } });
+}
+
+export function finishHookah(hookahId: string, reason: FinishReason): Promise<Hookah> {
+  return request('POST', `/hookahs/${hookahId}/finish`, decodeHookah, { body: { reason } });
 }

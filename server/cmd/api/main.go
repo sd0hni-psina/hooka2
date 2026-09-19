@@ -67,7 +67,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 
 	tokens := auth.NewTokens(cfg.JWTSecret, cfg.AccessTTL)
 	staffSvc := staff.NewService(pool, staffRepo, venueRepo, layoutRepo, tokens, cfg.RefreshTTL)
-	hookahSvc := hookah.NewService(pool, hookahRepo, layoutRepo, venueRepo, staffRepo)
+	hookahSvc := hookah.NewService(pool, hookahRepo, layoutRepo, venueRepo, staffRepo, hub)
 	venueSvc := venue.NewService(pool, venueRepo)
 	layoutSvc := layout.NewService(pool, layoutRepo, hub)
 	accountSvc := account.NewService(pool, account.NewRepository(), staffRepo, staffSvc, venueRepo, venueSvc)
@@ -80,6 +80,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 	account.NewHandler(accountSvc).Register(router)
 	venue.NewHandler(venueSvc).Register(router)
 	layout.NewHandler(layoutSvc).Register(router)
+	hookah.NewHandler(hookahSvc).Register(router)
 	realtime.NewHandler(hub, guard, hookah.Snapshots{Svc: hookahSvc}, cfg.CORSOrigins, log).Register(router)
 
 	srv := &http.Server{
@@ -92,7 +93,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 	bg, cancelBG := context.WithCancel(ctx)
 	defer cancelBG()
 	wg.Add(2)
-	go func() { defer wg.Done(); scheduler.New(log, cfg.SchedulerTick).Run(bg) }()
+	go func() { defer wg.Done(); scheduler.New(log, cfg.SchedulerTick, hookahSvc).Run(bg) }()
 	go func() { defer wg.Done(); push.NewWorker(pool, sender, log, cfg.PushTick).Run(bg) }()
 
 	errc := make(chan error, 1)
