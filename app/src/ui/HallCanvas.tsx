@@ -5,11 +5,10 @@ import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanima
 import Svg, { Rect } from 'react-native-svg';
 
 import type { Table, TableStatus } from '../api/types';
+import { clampPosition, GRID } from '../domain/layout';
 import { TableShape } from './TableShape';
 import { color, radius } from './tokens';
 
-// The hall is a 100x100 grid, tech.md section 7.
-export const GRID = 100;
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
 
@@ -20,11 +19,16 @@ type Props = {
   editable?: boolean;
   onTableMove?: (tableId: string, x: number, y: number) => void;
   badges?: Record<string, string>;
+  warnIds?: Set<string>;
   selectedId?: string | null;
 };
 
-export function HallCanvas({ tables, statuses, onTablePress, badges, selectedId }: Props) {
+export function HallCanvas({ tables, statuses, onTablePress, editable, onTableMove, badges, warnIds, selectedId }: Props) {
   const [size, setSize] = useState(0);
+  // The grabbed table and where it stood when the finger landed. Gesture
+  // callbacks are rebuilt on every render, so plain state is enough.
+  const [grabbed, setGrabbed] = useState<{ id: string; x: number; y: number } | null>(null);
+
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const tx = useSharedValue(0);
@@ -32,7 +36,30 @@ export function HallCanvas({ tables, statuses, onTablePress, badges, selectedId 
   const savedX = useSharedValue(0);
   const savedY = useSharedValue(0);
 
+  const unit = size > 0 ? size / GRID : 0;
+
+  // In edit mode the pan gesture drags a table instead of the canvas, so the
+  // finger stays on the table it grabbed.
+  const drag = Gesture.Pan()
+    .enabled(!!editable && unit > 0)
+    .runOnJS(true)
+    .onStart((e) => {
+      const gx = e.x / unit;
+      const gy = e.y / unit;
+      const hit = [...tables].reverse().find((t) => gx >= t.x && gx <= t.x + t.w && gy >= t.y && gy <= t.y + t.h);
+      setGrabbed(hit ? { id: hit.id, x: hit.x, y: hit.y } : null);
+    })
+    .onUpdate((e) => {
+      if (!grabbed) return;
+      const t = tables.find((x) => x.id === grabbed.id);
+      if (!t) return;
+      const next = clampPosition(grabbed.x + e.translationX / unit, grabbed.y + e.translationY / unit, t.w, t.h);
+      onTableMove?.(t.id, next.x, next.y);
+    })
+    .onFinalize(() => setGrabbed(null));
+
   const pinch = Gesture.Pinch()
+    .enabled(!editable)
     .onUpdate((e) => {
       scale.value = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, savedScale.value * e.scale));
     })
@@ -40,6 +67,7 @@ export function HallCanvas({ tables, statuses, onTablePress, badges, selectedId 
       savedScale.value = scale.value;
     });
   const pan = Gesture.Pan()
+    .enabled(!editable)
     .minDistance(8)
     .onUpdate((e) => {
       tx.value = savedX.value + e.translationX;
@@ -50,6 +78,7 @@ export function HallCanvas({ tables, statuses, onTablePress, badges, selectedId 
       savedY.value = ty.value;
     });
   const reset = Gesture.Tap()
+    .enabled(!editable)
     .numberOfTaps(2)
     .onEnd(() => {
       scale.value = 1;
@@ -68,7 +97,7 @@ export function HallCanvas({ tables, statuses, onTablePress, badges, selectedId 
 
   return (
     <View style={styles.frame} onLayout={onLayout}>
-      <GestureDetector gesture={Gesture.Simultaneous(pinch, pan, reset)}>
+      <GestureDetector gesture={Gesture.Simultaneous(drag, pinch, pan, reset)}>
         <Animated.View style={animated}>
           {size > 0 ? (
             <Svg width={size} height={size} viewBox={`0 0 ${GRID} ${GRID}`}>
@@ -80,7 +109,8 @@ export function HallCanvas({ tables, statuses, onTablePress, badges, selectedId 
                   status={statuses[t.id] ?? 'free'}
                   label={t.label}
                   badge={badges?.[t.id]}
-                  selected={selectedId === t.id}
+                  selected={selectedId === t.id || grabbed?.id === t.id}
+                  warn={warnIds?.has(t.id)}
                   onPress={() => onTablePress(t)}
                 />
               ))}
