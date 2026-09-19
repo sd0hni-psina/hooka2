@@ -10,7 +10,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSnapshotMatchesSharedFixture(t *testing.T) {
+// payloads maps every event this package owns to the Go type behind it.
+var payloads = map[string]func() any{
+	"state.snapshot":     func() any { return &HallState{} },
+	"hookah.started":     func() any { return &StartedData{} },
+	"hookah.transferred": func() any { return &TransferredData{} },
+	"hookah.expired":     func() any { return &ExpiredData{} },
+	"hookah.finished":    func() any { return &FinishedData{} },
+	"service.due":        func() any { return &DueData{} },
+	"service.missed":     func() any { return &MissedData{} },
+}
+
+func TestEventPayloadsMatchSharedFixture(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "contracts", "fixtures", "ws_events.json"))
 	require.NoError(t, err)
 	var fx struct {
@@ -21,19 +32,24 @@ func TestSnapshotMatchesSharedFixture(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(raw, &fx))
 
-	found := false
+	seen := map[string]bool{}
 	for _, ev := range fx.Events {
-		if ev.Type != "state.snapshot" {
+		mk, ok := payloads[ev.Type]
+		if !ok {
 			continue
 		}
-		found = true
-		dec := json.NewDecoder(bytes.NewReader(ev.Data))
-		dec.DisallowUnknownFields()
-		var st HallState
-		require.NoError(t, dec.Decode(&st))
-		out, err := json.Marshal(st)
-		require.NoError(t, err)
-		require.JSONEq(t, string(ev.Data), string(out))
+		seen[ev.Type] = true
+		t.Run(ev.Type, func(t *testing.T) {
+			dec := json.NewDecoder(bytes.NewReader(ev.Data))
+			dec.DisallowUnknownFields()
+			payload := mk()
+			require.NoError(t, dec.Decode(payload))
+			out, err := json.Marshal(payload)
+			require.NoError(t, err)
+			require.JSONEq(t, string(ev.Data), string(out))
+		})
 	}
-	require.True(t, found, "fixture has no state.snapshot")
+	for typ := range payloads {
+		require.True(t, seen[typ], "fixture has no %s", typ)
+	}
 }

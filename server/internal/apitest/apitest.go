@@ -41,6 +41,7 @@ type Env struct {
 	Srv    *httptest.Server
 	Tokens *auth.Tokens
 	Hub    *realtime.Hub
+	Hookah *hookah.Service
 	Fx     seed.Fixture
 }
 
@@ -61,8 +62,8 @@ func New(t *testing.T, withSeed bool) *Env {
 	staffSvc := staff.NewService(pool, staffRepo, venueRepo, layoutRepo, tokens, RefreshTTL)
 	venueSvc := venue.NewService(pool, venueRepo)
 	accountSvc := account.NewService(pool, account.NewRepository(), staffRepo, staffSvc, venueRepo, venueSvc)
-	hookahSvc := hookah.NewService(pool, hookah.NewRepository(), layoutRepo, venueRepo, staffRepo)
 	hub := realtime.NewHub(log)
+	hookahSvc := hookah.NewService(pool, hookah.NewRepository(), layoutRepo, venueRepo, staffRepo, hub)
 	layoutSvc := layout.NewService(pool, layoutRepo, hub)
 
 	guard := auth.NewGuard(tokens, staffSvc, httpx.WriteError)
@@ -71,11 +72,12 @@ func New(t *testing.T, withSeed bool) *Env {
 	account.NewHandler(accountSvc).Register(router)
 	venue.NewHandler(venueSvc).Register(router)
 	layout.NewHandler(layoutSvc).Register(router)
+	hookah.NewHandler(hookahSvc).Register(router)
 	realtime.NewHandler(hub, guard, hookah.Snapshots{Svc: hookahSvc}, nil, log).Register(router)
 
 	srv := httptest.NewServer(httpx.Chain(router, httpx.RequestID, httpx.Recover(log)))
 	t.Cleanup(srv.Close)
-	return &Env{T: t, Pool: pool, Srv: srv, Tokens: tokens, Hub: hub, Fx: fx}
+	return &Env{T: t, Pool: pool, Srv: srv, Tokens: tokens, Hub: hub, Hookah: hookahSvc, Fx: fx}
 }
 
 // TokenFor signs an access token for a seeded member.

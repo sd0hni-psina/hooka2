@@ -7,21 +7,15 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"hookah/server/internal/apitest"
 	"hookah/server/internal/domain"
-	"hookah/server/internal/hookah"
-	"hookah/server/internal/layout"
 	"hookah/server/internal/staff"
-	"hookah/server/internal/store/storetest"
-	"hookah/server/internal/venue"
-	"hookah/server/seed"
 )
 
 func TestHallState(t *testing.T) {
-	pool := storetest.Open(t)
+	e := apitest.New(t, true)
 	ctx := context.Background()
-	fx, err := seed.Seed(ctx, pool)
-	require.NoError(t, err)
-	svc := hookah.NewService(pool, hookah.NewRepository(), layout.NewRepository(), venue.NewRepository(), staff.NewRepository())
+	fx, svc := e.Fx, e.Hookah
 
 	t.Run("second hall shows its eight tables and the busy hookah as yellow", func(t *testing.T) {
 		st, err := svc.HallState(ctx, fx.VenueID, fx.HallIDs[1], []string{fx.Masters[0].StaffID}, time.Now())
