@@ -43,7 +43,7 @@ export default function HallScreen() {
       <AppBar
         title={hall?.name ?? t.appName}
         subtitle={me.venue.name}
-        right={manager ? <IconButton icon="settings" accessibilityLabel={t.appName} onPress={() => router.push('/settings')} /> : undefined}
+        right={manager ? <IconButton icon="settings" accessibilityLabel={t.settings.title} onPress={() => router.push('/settings')} /> : undefined}
       />
       <Card>
         <Text variant="h2">{me.staff.display_name}</Text>
