@@ -1,10 +1,11 @@
 # tech.md — Кальянный таймер
 
-**Версия ядра: v1** (2026-09-19)
+**Версия ядра: v2** (2026-09-19)
 
 Changelog:
 
 - v1 — первая версия. Стек, схема БД, доменные правила, HTTP и WS контракты, UI-кит, стратегия тестов, дорожная карта из 6 слайсов.
+- v2 — раздел 19.1: типы `Venue`, `Hall`, `Staff`, `Tokens`, `Me`; `device_id` и `platform` в register и login; правила валидации входа; поиск мастера по имени и миграция `0002`; `seq` и `hall_id` в прямых ответах WS; ответ `/healthz`; зависимость `golang.org/x/crypto`; команды `cmd/migrate`, `cmd/seed`, `cmd/devtoken`; папка `/deploy`; `TEST_DATABASE_URL`.
 
 Правила работы с этим файлом:
 
@@ -1099,3 +1100,98 @@ test(scheduler): cover double tick idempotency
 ## 18. Что дальше v1
 
 Записано, чтобы не тянуть в v1: история смены и отчёты по мастерам, среднее время реакции, несколько заведений на одном аккаунте, веб-панель администратора, офлайн-очередь мутаций, горизонтальное масштабирование WS через LISTEN/NOTIFY, интеграция с POS для автозапуска кальяна по чеку.
+
+---
+
+## 19. Дополнения контракта
+
+Раздел пополняется только дописыванием. Каждый подраздел закрывает `CONTRACT GAP`, найденный при реализации, и помечен версией ядра.
+
+### 19.1. v2: бутстрап, вход, скелет
+
+**Общие типы** (дополняют раздел 11):
+
+```ts
+export type Platform = 'ios' | 'android';
+
+export type Venue = {
+  id: string; name: string; timezone: string;
+  join_code: string | null; // null для роли master
+};
+
+export type Hall = { id: string; venue_id: string; name: string; sort_order: number };
+
+export type Staff = {
+  id: string; venue_id: string; display_name: string; role: Role;
+  blocked: boolean; created_at: string; last_seen_at: string | null;
+};
+
+export type Tokens = { access_token: string; refresh_token: string; access_expires_at: string };
+
+export type Me = { staff: Staff; venue: Venue; halls: Hall[] };
+```
+
+`halls` везде отсортированы по `sort_order`, затем по `name`.
+
+**Аккаунт и сессия устройства.** Владелец тоже `staff` (роль `owner`, `account_id` заполнен), его устройство тоже держит строку `staff_sessions`. Поэтому register и login принимают устройство:
+
+```
+POST   /auth/register   {email, password, display_name, venue_name, device_id, platform} → {tokens, venue}
+POST   /auth/login      {email, password, device_id, platform} → {tokens, venue}
+```
+
+Повторный login или join с тем же `device_id` обновляет существующую сессию (новый refresh, `revoked_at = null`), вторую строку не создаёт. Неверный email или пароль отдаёт `unauthorized`. Занятый email отдаёт `validation_failed` с `details.fields.email = "taken"`.
+
+**Валидация входа.** Строки обрезаются по пробелам до проверки.
+
+| поле | правило |
+|---|---|
+| `email` | 3..254 символа, содержит `@` |
+| `password` | 8..72 байта (предел bcrypt) |
+| `display_name` | 1..40 символов |
+| `venue_name` | 1..80 символов |
+| `device_id` | 8..128 символов |
+| `platform` | `ios` или `android` |
+| `code` | ровно 4 цифры |
+
+`details.fields` — объект `{поле: причина}`, причины: `required`, `too_short`, `too_long`, `invalid`, `taken`.
+
+**Поиск мастера при входе по коду.** `POST /join` ищет в заведении `staff` без `account_id` с тем же `display_name` без учёта регистра. Нашёл — создаёт или обновляет сессию этого `staff`. Не нашёл — создаёт `staff` с ролью `master`. Найденный `staff` с `blocked_at` отдаёт `forbidden`. Гонку двух входов с одним именем закрывает миграция `0002_staff_name.sql`:
+
+```sql
+create unique index staff_venue_name_key on staff (venue_id, lower(display_name))
+  where account_id is null;
+```
+
+**Пароль.** bcrypt, cost 10, пакет `golang.org/x/crypto/bcrypt`.
+
+**`/healthz`.** Без префикса `/api/v1` и без авторизации. `200 {"status":"ok"}`, если пинг БД прошёл, иначе `503 {"status":"unavailable"}`. Формат ошибок раздела 8 на него не распространяется.
+
+**WS: прямые ответы.** `state.snapshot`, `pong` и `error` уходят одному соединению и `seq` не увеличивают. В них `seq` равен последнему выданному `seq` заведения на момент отправки. Клиент берёт `seq` снапшота базой и игнорирует `seq` в `pong` и `error`. Следующее широковещательное событие должно прийти с `seq = база + 1`, любое другое значение, включая меньшее после рестарта сервера, считается разрывом.
+
+`hall_id` в конверте равен `null` у событий уровня заведения (`plan.updated`) и у `pong` и `error`.
+
+Невалидный или истёкший токен в `GET /api/v1/ws` отдаёт `401 unauthorized` до апгрейда, заблокированный `staff` или отозванная сессия отдают `403 forbidden`. `subscribe` на чужой или несуществующий зал отдаёт сообщение `error` с `code = not_found`.
+
+**Проверка сессии.** Auth guard на каждом запросе проверяет JWT и то, что сессия `session_id` не отозвана, а `staff` не заблокирован. Отозванная сессия отдаёт `unauthorized`, заблокированный `staff` отдаёт `forbidden`.
+
+**Структура папок** (дополняет раздел 5):
+
+```
+/server
+  cmd/migrate/main.go     goose up/status на встроенных файлах migrations/*.sql
+  cmd/seed/main.go        запускает seed.Seed против DATABASE_URL
+  cmd/devtoken/main.go    печатает access-токен для staff из сида, только APP_ENV=dev
+  migrations/embed.go     //go:embed *.sql
+  Dockerfile
+/deploy
+  docker-compose.prod.yml api + postgres + caddy на VPS
+  Caddyfile               TLS и reverse-proxy на api
+.github/workflows/
+  ci.yml                  гейт на PR
+  deploy.yml              деплой из main
+```
+
+`seed` — пакет с функцией `Seed(ctx, pool) (Fixture, error)`, ей пользуются и `cmd/seed`, и интеграционные тесты.
+
+**Конфиг** (дополняет раздел 14): `.env.example` получает `TEST_DATABASE_URL=postgres://hookah:hookah@localhost:5432/hookah_test?sslmode=disable`. Интеграционные тесты пропускаются через `t.Skip`, если переменная пуста, в CI она задана всегда.
