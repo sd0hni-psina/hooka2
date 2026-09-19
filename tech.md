@@ -1,12 +1,13 @@
 # tech.md — Кальянный таймер
 
-**Версия ядра: v3** (2026-09-19)
+**Версия ядра: v4** (2026-09-19)
 
 Changelog:
 
 - v1 — первая версия. Стек, схема БД, доменные правила, HTTP и WS контракты, UI-кит, стратегия тестов, дорожная карта из 6 слайсов.
 - v2 — раздел 19.1: типы `Venue`, `Hall`, `Staff`, `Tokens`, `Me`; `device_id` и `platform` в register и login; правила валидации входа; поиск мастера по имени и миграция `0002`; `seq` и `hall_id` в прямых ответах WS; ответ `/healthz`; зависимость `golang.org/x/crypto`; команды `cmd/migrate`, `cmd/seed`, `cmd/devtoken`; папка `/deploy`; `TEST_DATABASE_URL`.
 - v3 — раздел 19.2: зависимости клиента на Expo SDK 57, переменные `EXPO_PUBLIC_*`, раскладка роутов, доставка событий хабом всем подпискам заведения, пакет `storetest`, UTC в ответах.
+- v4 — раздел 19.3: примитив `Icon`, дополнительные пропсы `Text`, `HallCanvas`, семантика `Countdown`, ресинк по `subscribe`, файлы клиента `decode.ts`, `session.ts`, `auth.ts`.
 
 Правила работы с этим файлом:
 
@@ -1235,3 +1236,40 @@ app/kitchen-sink.tsx          доступен только при __DEV__
 **Интеграционные тесты сервера.** Пакет `internal/store/storetest` создаёт на каждый тест отдельную БД клоном мигрированного шаблона `hookah_template`. Пакеты гоняются параллельно без общей БД.
 
 **Время в ответах.** Все временные поля в HTTP и WS сериализуются в UTC с суффиксом `Z`.
+
+### 19.3. v4: UI-кит и ресинк
+
+**Примитив `Icon`** (дополняет таблицу раздела 12):
+
+| Компонент | Пропсы |
+|---|---|
+| `Icon` | `name: IconName, size?, color?: ColorToken` |
+
+Иконки рисуются через `react-native-svg`, отдельной библиотеки иконок нет. Набор имён растёт вместе с экранами. Пропсы `icon` у `Button`, `IconButton`, `Badge`, `EmptyState` принимают `IconName`.
+
+**Дополнительные пропсы.**
+
+- `Text`: `numberOfLines?`.
+- `HallCanvas`: `badges?: Record<table_id, string>` (подпись на столе: счётчик или имя взявшего задачу), `selectedId?`.
+- `IconButton.variant`: `plain | filled`.
+- `SegmentedControl.options`: `{value, label}[]`.
+- `Toast.tone`: `neutral | success | warning | danger`.
+
+**`Countdown`.** `mode: up` показывает время с момента `target`, `mode: down` показывает время до `target`. `from` замораживает счётчик на указанном моменте (кальян завершён). Без `from` счётчик тикает от `serverNow()` раз в секунду.
+
+**Статус без цвета.** `src/ui/status.ts` сопоставляет каждому `TableStatus` цвет, иконку и слово из `ru.ts`. Каждый примитив со статусом берёт все три.
+
+**Ресинк.** Разрыв `seq` клиент закрывает повторным `subscribe` на тот же зал, а не `GET /halls/{id}/state`: ответ на `subscribe` несёт `seq`, от которого считаются следующие события. `GET /halls/{id}/state` остаётся для REST-клиентов и тестов.
+
+**Файлы клиента** (дополняют раздел 5):
+
+```
+src/api/decode.ts     разбор unknown в типы контракта на границе сети
+src/api/session.ts    хранение токенов в expo-secure-store
+src/store/auth.ts     сессия и /me, гард читает отсюда
+src/ui/status.ts      цвет, иконка и слово статуса
+src/ui/useServerNow.ts хук, который перерисовывает компонент по serverNow()
+src/env.d.ts          типы EXPO_PUBLIC_*
+```
+
+ESLint запрещает `Date.now()` во всём клиенте, кроме `src/ws/clock.ts`.
