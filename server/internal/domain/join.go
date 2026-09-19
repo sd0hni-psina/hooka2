@@ -101,7 +101,7 @@ func ValidateJoin(in JoinInput) (JoinInput, error) {
 		v.Add("code", ReasonInvalid)
 	}
 	checkLen(&v, "display_name", in.DisplayName, 1, 40)
-	in.Device.check(&v)
+	in.check(&v)
 	return in, v.Err()
 }
 
@@ -123,7 +123,7 @@ func ValidateRegister(in RegisterInput) (RegisterInput, error) {
 	checkPassword(&v, in.Password)
 	checkLen(&v, "display_name", in.DisplayName, 1, 40)
 	checkLen(&v, "venue_name", in.VenueName, 1, 80)
-	in.Device.check(&v)
+	in.check(&v)
 	return in, v.Err()
 }
 
@@ -141,7 +141,7 @@ func ValidateLogin(in LoginInput) (LoginInput, error) {
 	if in.Password == "" {
 		v.Add("password", ReasonRequired)
 	}
-	in.Device.check(&v)
+	in.check(&v)
 	return in, v.Err()
 }
 
