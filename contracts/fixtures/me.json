@@ -1,0 +1,14 @@
+{
+  "staff": {
+    "id": "5aff0000-0000-4000-8000-000000000001", "venue_id": "5b0d6a1e-2f7c-4c1a-9a51-6f3e8e2b7c10",
+    "display_name": "Ерлан", "role": "master", "blocked": false,
+    "created_at": "2026-09-19T17:00:00Z", "last_seen_at": null
+  },
+  "venue": {
+    "id": "5b0d6a1e-2f7c-4c1a-9a51-6f3e8e2b7c10", "name": "Кальянная на Абая", "timezone": "Asia/Atyrau", "join_code": null
+  },
+  "halls": [
+    { "id": "6b229427-5c83-41ff-8f2c-6a4d3a40f507", "venue_id": "5b0d6a1e-2f7c-4c1a-9a51-6f3e8e2b7c10", "name": "Основной зал", "sort_order": 0 },
+    { "id": "8f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f", "venue_id": "5b0d6a1e-2f7c-4c1a-9a51-6f3e8e2b7c10", "name": "Второй зал", "sort_order": 1 }
+  ]
+}
