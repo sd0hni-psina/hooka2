@@ -10,7 +10,7 @@ function snapshot(seq: number, hall = hallId): ParsedMessage {
   return parseMessage(JSON.stringify({ ...snapshotFixture, seq, hall_id: hall }));
 }
 
-function event(seq: number, hall: string | null = hallId, type = 'layout.updated'): ParsedMessage {
+function event(seq: number, hall: string | null = hallId, type = 'hookah.expired'): ParsedMessage {
   const env: Envelope = { v: 1, type, seq, ts: '2026-09-19T18:05:00Z', venue_id: snapshotFixture.venue_id, hall_id: hall, data: {} };
   return parseMessage(JSON.stringify(env));
 }
@@ -68,5 +68,29 @@ describe('hall reducer', () => {
   it('ignores a late snapshot of the previously selected hall', () => {
     const { data } = run(selected, [snapshot(41, 'previous-hall')]);
     expect(data.state).toBeNull();
+  });
+});
+
+const layoutFixture = fixture.events.find((e) => e.type === 'layout.updated') as Envelope;
+
+describe('layout.updated', () => {
+  const selected: HallData = { ...emptyHall, hallId };
+
+  function layout(seq: number, hall: string | null = hallId): ParsedMessage {
+    return parseMessage(JSON.stringify({ ...layoutFixture, seq, hall_id: hall }));
+  }
+
+  it('replaces the tables of the hall', () => {
+    const { data } = run(selected, [snapshot(41), layout(42)]);
+    expect(data.state?.tables.map((t) => t.label)).toEqual(['15', '16']);
+    expect(data.state?.hookahs).toHaveLength(1);
+    expect(data.seq).toBe(42);
+  });
+
+  it('ignores a layout of another hall but keeps seq', () => {
+    const { data, resyncs } = run(selected, [snapshot(41), layout(42, 'other-hall')]);
+    expect(data.state?.tables.map((t) => t.label)).toEqual(['15']);
+    expect(data.seq).toBe(42);
+    expect(resyncs).toEqual([]);
   });
 });

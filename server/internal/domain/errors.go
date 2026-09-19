@@ -27,6 +27,8 @@ const (
 	ReasonTooLong  = "too_long"
 	ReasonInvalid  = "invalid"
 	ReasonTaken    = "taken"
+	// ReasonOutOfBounds marks a table that sticks out of the grid, section 19.6.
+	ReasonOutOfBounds = "out_of_bounds"
 )
 
 // ValidationError carries per-field reasons for details.fields.

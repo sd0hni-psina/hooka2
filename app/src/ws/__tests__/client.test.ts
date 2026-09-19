@@ -108,7 +108,17 @@ describe('WsClient', () => {
     client.start();
     await flush();
     sockets[0]!.onopen?.();
-    sockets[0]!.receive(envelope('layout.updated', 9, {}, 'hall-1'));
+    sockets[0]!.receive(envelope('hookah.expired', 9, {}, 'hall-1'));
+    expect(sockets[0]!.sent.map((m) => m.type)).toEqual(['subscribe', 'ping', 'subscribe']);
+  });
+
+  it('resubscribes after a message it cannot parse', async () => {
+    const { client, sockets } = setup();
+    client.subscribe('hall-1');
+    client.start();
+    await flush();
+    sockets[0]!.onopen?.();
+    sockets[0]!.receive({ type: 'service.due', data: {} });
     expect(sockets[0]!.sent.map((m) => m.type)).toEqual(['subscribe', 'ping', 'subscribe']);
   });
 

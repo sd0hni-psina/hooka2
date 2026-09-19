@@ -28,19 +28,22 @@ export function reduce(data: HallData, msg: ParsedMessage): Reduced {
     case 'pong':
     case 'error':
       return { data, resync: false };
+    case 'layout':
     case 'event': {
-      if (data.seq === null || data.state === null) return { data, resync: false };
+      const state = data.state;
+      if (data.seq === null || state === null) return { data, resync: false };
       if (msg.env.seq !== data.seq + 1) return { data, resync: true };
       const next = { ...data, seq: msg.env.seq };
       const ours = msg.env.hall_id === null || msg.env.hall_id === data.hallId;
       if (!ours) return { data: next, resync: false };
-      return { data: { ...next, state: applyEvent(next.state as HallState, msg) }, resync: false };
+      return { data: { ...next, state: applyEvent(state, msg) }, resync: false };
     }
   }
 }
 
 // applyEvent grows with the slices that introduce each event type. Unknown
 // types leave the state untouched.
-function applyEvent(state: HallState, _msg: Extract<ParsedMessage, { kind: 'event' }>): HallState {
+function applyEvent(state: HallState, msg: Extract<ParsedMessage, { kind: 'event' | 'layout' }>): HallState {
+  if (msg.kind === 'layout') return { ...state, tables: msg.tables };
   return state;
 }

@@ -144,7 +144,13 @@ export default function KitchenSink() {
         </Svg>
       </Section>
       <Section title="HallCanvas">
-        <HallCanvas tables={sampleTables} statuses={sampleStatuses} onTablePress={() => undefined} />
+        <HallCanvas
+          tables={sampleTables}
+          statuses={sampleStatuses}
+          warnIds={new Set(['t1'])}
+          selectedId="t2"
+          onTablePress={() => undefined}
+        />
       </Section>
       <Section title="Toast">
         <Toast message="Стол 15: стряхните угли" tone="warning" actionTitle="Беру" onAction={() => undefined} />

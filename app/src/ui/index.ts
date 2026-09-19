@@ -6,7 +6,7 @@ export { CodeInput } from './CodeInput';
 export { ConfirmDialog } from './ConfirmDialog';
 export { Countdown } from './Countdown';
 export { EmptyState } from './EmptyState';
-export { HallCanvas, GRID } from './HallCanvas';
+export { HallCanvas } from './HallCanvas';
 export { Icon, type IconName } from './Icon';
 export { IconButton } from './IconButton';
 export { Input } from './Input';
