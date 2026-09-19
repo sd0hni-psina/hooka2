@@ -187,3 +187,14 @@ func isDigits(s string, n int) bool {
 	}
 	return true
 }
+
+// ValidateIdempotencyKey checks the header of tech.md section 19.8.
+func ValidateIdempotencyKey(key string) error {
+	var v ValidationError
+	if strings.TrimSpace(key) == "" {
+		v.Add("idempotency_key", ReasonRequired)
+	} else if !ValidUUID(strings.TrimSpace(key)) {
+		v.Add("idempotency_key", ReasonInvalid)
+	}
+	return v.Err()
+}
