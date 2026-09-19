@@ -1,0 +1,69 @@
+{
+  "plan": { "warn_before_sec": 60, "grace_sec": 120 },
+  "now": "2026-09-19T18:20:00Z",
+  "cases": [
+    { "name": "no hookah is free", "hookah": null, "expected": "free" },
+    {
+      "name": "finished hookah is free even with an overdue event",
+      "hookah": { "state": "finished", "events": [ { "due_at": "2026-09-19T18:00:00Z", "state": "due" } ] },
+      "expected": "free"
+    },
+    {
+      "name": "due event at exactly grace is red",
+      "hookah": { "state": "active", "events": [ { "due_at": "2026-09-19T18:18:00Z", "state": "due" } ] },
+      "expected": "red"
+    },
+    {
+      "name": "due event one second inside grace is yellow",
+      "hookah": { "state": "active", "events": [ { "due_at": "2026-09-19T18:18:01Z", "state": "due" } ] },
+      "expected": "yellow"
+    },
+    {
+      "name": "expired hookah without due events is red",
+      "hookah": { "state": "expired", "events": [ { "due_at": "2026-09-19T18:15:00Z", "state": "confirmed" } ] },
+      "expected": "red"
+    },
+    {
+      "name": "expired hookah with a fresh due event is red",
+      "hookah": { "state": "expired", "events": [ { "due_at": "2026-09-19T18:19:50Z", "state": "due" } ] },
+      "expected": "red"
+    },
+    {
+      "name": "pending event exactly at warn is yellow",
+      "hookah": { "state": "active", "events": [ { "due_at": "2026-09-19T18:21:00Z", "state": "pending" } ] },
+      "expected": "yellow"
+    },
+    {
+      "name": "pending event one second before warn is green",
+      "hookah": { "state": "active", "events": [ { "due_at": "2026-09-19T18:21:01Z", "state": "pending" } ] },
+      "expected": "green"
+    },
+    {
+      "name": "overdue pending event not yet fired is yellow",
+      "hookah": { "state": "active", "events": [ { "due_at": "2026-09-19T18:19:00Z", "state": "pending" } ] },
+      "expected": "yellow"
+    },
+    {
+      "name": "confirmed and missed events do not color the table",
+      "hookah": { "state": "active", "events": [
+        { "due_at": "2026-09-19T18:05:00Z", "state": "confirmed" },
+        { "due_at": "2026-09-19T18:06:00Z", "state": "missed" },
+        { "due_at": "2026-09-19T18:30:00Z", "state": "pending" }
+      ] },
+      "expected": "green"
+    },
+    {
+      "name": "overdue due event wins over a near pending one",
+      "hookah": { "state": "active", "events": [
+        { "due_at": "2026-09-19T18:10:00Z", "state": "due" },
+        { "due_at": "2026-09-19T18:20:30Z", "state": "pending" }
+      ] },
+      "expected": "red"
+    },
+    {
+      "name": "active hookah with no events is green",
+      "hookah": { "state": "active", "events": [] },
+      "expected": "green"
+    }
+  ]
+}

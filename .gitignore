@@ -1,0 +1,10 @@
+.env
+.DS_Store
+/server/bin/
+/app/node_modules/
+/app/.expo/
+/app/dist/
+/app/.env
+/app/ios/
+/app/android/
+coverage/

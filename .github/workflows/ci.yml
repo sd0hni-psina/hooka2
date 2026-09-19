@@ -1,0 +1,60 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: hookah
+          POSTGRES_PASSWORD: hookah
+          POSTGRES_DB: hookah_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U hookah" --health-interval 2s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgres://hookah:hookah@localhost:5432/hookah_test?sslmode=disable
+      TEST_DATABASE_URL: postgres://hookah:hookah@localhost:5432/hookah_test?sslmode=disable
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - run: go vet ./...
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.13.2
+          working-directory: server
+      - name: goose up on ephemeral postgres
+        run: go run ./cmd/migrate up
+      - name: seed applies on top of the migrations
+        run: go run ./cmd/seed
+      - run: go test ./... -race -count=1
+      - run: go build -o bin/api ./cmd/api
+
+  app:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx eslint .
+      - run: npx jest --ci

@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: hookah
+      POSTGRES_PASSWORD: hookah
+      POSTGRES_DB: hookah
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hookah"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: ./server
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://hookah:hookah@postgres:5432/hookah?sslmode=disable
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: ["api"]
+
+volumes:
+  pgdata:

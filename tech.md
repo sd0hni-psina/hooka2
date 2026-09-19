@@ -1,10 +1,13 @@
 # tech.md — Кальянный таймер
 
-**Версия ядра: v1** (2026-09-19)
+**Версия ядра: v4** (2026-09-19)
 
 Changelog:
 
 - v1 — первая версия. Стек, схема БД, доменные правила, HTTP и WS контракты, UI-кит, стратегия тестов, дорожная карта из 6 слайсов.
+- v2 — раздел 19.1: типы `Venue`, `Hall`, `Staff`, `Tokens`, `Me`; `device_id` и `platform` в register и login; правила валидации входа; поиск мастера по имени и миграция `0002`; `seq` и `hall_id` в прямых ответах WS; ответ `/healthz`; зависимость `golang.org/x/crypto`; команды `cmd/migrate`, `cmd/seed`, `cmd/devtoken`; папка `/deploy`; `TEST_DATABASE_URL`.
+- v3 — раздел 19.2: зависимости клиента на Expo SDK 57, переменные `EXPO_PUBLIC_*`, раскладка роутов, доставка событий хабом всем подпискам заведения, пакет `storetest`, UTC в ответах.
+- v4 — раздел 19.3: примитив `Icon`, дополнительные пропсы `Text`, `HallCanvas`, семантика `Countdown`, ресинк по `subscribe`, файлы клиента `decode.ts`, `session.ts`, `auth.ts`.
 
 Правила работы с этим файлом:
 
@@ -1099,3 +1102,174 @@ test(scheduler): cover double tick idempotency
 ## 18. Что дальше v1
 
 Записано, чтобы не тянуть в v1: история смены и отчёты по мастерам, среднее время реакции, несколько заведений на одном аккаунте, веб-панель администратора, офлайн-очередь мутаций, горизонтальное масштабирование WS через LISTEN/NOTIFY, интеграция с POS для автозапуска кальяна по чеку.
+
+---
+
+## 19. Дополнения контракта
+
+Раздел пополняется только дописыванием. Каждый подраздел закрывает `CONTRACT GAP`, найденный при реализации, и помечен версией ядра.
+
+### 19.1. v2: бутстрап, вход, скелет
+
+**Общие типы** (дополняют раздел 11):
+
+```ts
+export type Platform = 'ios' | 'android';
+
+export type Venue = {
+  id: string; name: string; timezone: string;
+  join_code: string | null; // null для роли master
+};
+
+export type Hall = { id: string; venue_id: string; name: string; sort_order: number };
+
+export type Staff = {
+  id: string; venue_id: string; display_name: string; role: Role;
+  blocked: boolean; created_at: string; last_seen_at: string | null;
+};
+
+export type Tokens = { access_token: string; refresh_token: string; access_expires_at: string };
+
+export type Me = { staff: Staff; venue: Venue; halls: Hall[] };
+```
+
+`halls` везде отсортированы по `sort_order`, затем по `name`.
+
+**Аккаунт и сессия устройства.** Владелец тоже `staff` (роль `owner`, `account_id` заполнен), его устройство тоже держит строку `staff_sessions`. Поэтому register и login принимают устройство:
+
+```
+POST   /auth/register   {email, password, display_name, venue_name, device_id, platform} → {tokens, venue}
+POST   /auth/login      {email, password, device_id, platform} → {tokens, venue}
+```
+
+Повторный login или join с тем же `device_id` обновляет существующую сессию (новый refresh, `revoked_at = null`), вторую строку не создаёт. Неверный email или пароль отдаёт `unauthorized`. Занятый email отдаёт `validation_failed` с `details.fields.email = "taken"`.
+
+**Валидация входа.** Строки обрезаются по пробелам до проверки.
+
+| поле | правило |
+|---|---|
+| `email` | 3..254 символа, содержит `@` |
+| `password` | 8..72 байта (предел bcrypt) |
+| `display_name` | 1..40 символов |
+| `venue_name` | 1..80 символов |
+| `device_id` | 8..128 символов |
+| `platform` | `ios` или `android` |
+| `code` | ровно 4 цифры |
+
+`details.fields` — объект `{поле: причина}`, причины: `required`, `too_short`, `too_long`, `invalid`, `taken`.
+
+**Поиск мастера при входе по коду.** `POST /join` ищет в заведении `staff` без `account_id` с тем же `display_name` без учёта регистра. Нашёл — создаёт или обновляет сессию этого `staff`. Не нашёл — создаёт `staff` с ролью `master`. Найденный `staff` с `blocked_at` отдаёт `forbidden`. Гонку двух входов с одним именем закрывает миграция `0002_staff_name.sql`:
+
+```sql
+create unique index staff_venue_name_key on staff (venue_id, lower(display_name))
+  where account_id is null;
+```
+
+**Пароль.** bcrypt, cost 10, пакет `golang.org/x/crypto/bcrypt`.
+
+**`/healthz`.** Без префикса `/api/v1` и без авторизации. `200 {"status":"ok"}`, если пинг БД прошёл, иначе `503 {"status":"unavailable"}`. Формат ошибок раздела 8 на него не распространяется.
+
+**WS: прямые ответы.** `state.snapshot`, `pong` и `error` уходят одному соединению и `seq` не увеличивают. В них `seq` равен последнему выданному `seq` заведения на момент отправки. Клиент берёт `seq` снапшота базой и игнорирует `seq` в `pong` и `error`. Следующее широковещательное событие должно прийти с `seq = база + 1`, любое другое значение, включая меньшее после рестарта сервера, считается разрывом.
+
+`hall_id` в конверте равен `null` у событий уровня заведения (`plan.updated`) и у `pong` и `error`.
+
+Невалидный или истёкший токен в `GET /api/v1/ws` отдаёт `401 unauthorized` до апгрейда, заблокированный `staff` или отозванная сессия отдают `403 forbidden`. `subscribe` на чужой или несуществующий зал отдаёт сообщение `error` с `code = not_found`.
+
+**Проверка сессии.** Auth guard на каждом запросе проверяет JWT и то, что сессия `session_id` не отозвана, а `staff` не заблокирован. Отозванная сессия отдаёт `unauthorized`, заблокированный `staff` отдаёт `forbidden`.
+
+**Структура папок** (дополняет раздел 5):
+
+```
+/server
+  cmd/migrate/main.go     goose up/status на встроенных файлах migrations/*.sql
+  cmd/seed/main.go        запускает seed.Seed против DATABASE_URL
+  cmd/devtoken/main.go    печатает access-токен для staff из сида, только APP_ENV=dev
+  migrations/embed.go     //go:embed *.sql
+  Dockerfile
+/deploy
+  docker-compose.prod.yml api + postgres + caddy на VPS
+  Caddyfile               TLS и reverse-proxy на api
+.github/workflows/
+  ci.yml                  гейт на PR
+  deploy.yml              деплой из main
+```
+
+`seed` — пакет с функцией `Seed(ctx, pool) (Fixture, error)`, ей пользуются и `cmd/seed`, и интеграционные тесты.
+
+**Конфиг** (дополняет раздел 14): `.env.example` получает `TEST_DATABASE_URL=postgres://hookah:hookah@localhost:5432/hookah_test?sslmode=disable`. Интеграционные тесты пропускаются через `t.Skip`, если переменная пуста, в CI она задана всегда.
+
+### 19.2. v3: клиент скелета, доставка WS
+
+**Зависимости клиента** (дополняют раздел 3). Expo SDK 57, React Native 0.86, React 19.2, TypeScript 6. Версии ставит `npx expo install`, совместимые с SDK.
+
+- Рантайм: `expo-crypto` (UUID для `device_id` и `Idempotency-Key`), `expo-device` (пуш-токен только на физическом устройстве), `expo-constants`, `expo-linking`, `expo-status-bar`, `react-native-safe-area-context`, `react-native-screens` (обязательные пиры `expo-router`), `react-dom` (пир `expo-router`, в сборку под iOS и Android не попадает).
+- Разработка: `typescript`, `@types/react`, `jest`, `jest-expo` (пресет), `@types/jest`, `eslint`, `eslint-config-expo`.
+
+**Конфиг клиента.** `app/.env.example`:
+
+```
+EXPO_PUBLIC_API_URL=http://192.168.1.10:8080
+EXPO_PUBLIC_DEV_ACCESS_TOKEN=
+```
+
+WS-адрес выводится из `EXPO_PUBLIC_API_URL` заменой схемы `http` на `ws`. `EXPO_PUBLIC_DEV_ACCESS_TOKEN` читается только при `__DEV__` и только если в `expo-secure-store` нет сессии: это вход слайса 0 до появления `join`. Значение печатает `make devtoken`.
+
+**Роуты** (уточняют раздел 12):
+
+```
+app/_layout.tsx               корневой Stack, гард авторизации, запуск WS
+app/join.tsx
+app/(hall)/_layout.tsx        Tabs: index «Зал», tasks «Задачи»
+app/(hall)/index.tsx
+app/(hall)/tasks.tsx
+app/(hall)/table/[id].tsx     модальный экран поверх табов
+app/settings/_layout.tsx      Stack, только owner и admin
+app/kitchen-sink.tsx          доступен только при __DEV__
+```
+
+Гард: нет сессии → `join`, есть сессия → `(hall)`.
+
+**Доставка WS-событий.** Хаб рассылает каждое событие заведения всем соединениям заведения, у которых была подписка, независимо от зала. Поэтому `seq` у каждого соединения идёт без дыр. Клиент отслеживает `seq` по всем событиям, а в стор применяет только события своего зала и события уровня заведения (`hall_id = null`). Комната `hall_id` определяет, чей снапшот получает соединение и кто попадает в `staff_online`.
+
+События, опубликованные, пока сервер читает снапшот, приходят сразу после снапшота, если их `seq` больше `seq` снапшота. Эффект такого события уже может быть в снапшоте, поэтому редьюсер применяет события идемпотентно.
+
+**Интеграционные тесты сервера.** Пакет `internal/store/storetest` создаёт на каждый тест отдельную БД клоном мигрированного шаблона `hookah_template`. Пакеты гоняются параллельно без общей БД.
+
+**Время в ответах.** Все временные поля в HTTP и WS сериализуются в UTC с суффиксом `Z`.
+
+### 19.3. v4: UI-кит и ресинк
+
+**Примитив `Icon`** (дополняет таблицу раздела 12):
+
+| Компонент | Пропсы |
+|---|---|
+| `Icon` | `name: IconName, size?, color?: ColorToken` |
+
+Иконки рисуются через `react-native-svg`, отдельной библиотеки иконок нет. Набор имён растёт вместе с экранами. Пропсы `icon` у `Button`, `IconButton`, `Badge`, `EmptyState` принимают `IconName`.
+
+**Дополнительные пропсы.**
+
+- `Text`: `numberOfLines?`.
+- `HallCanvas`: `badges?: Record<table_id, string>` (подпись на столе: счётчик или имя взявшего задачу), `selectedId?`.
+- `IconButton.variant`: `plain | filled`.
+- `SegmentedControl.options`: `{value, label}[]`.
+- `Toast.tone`: `neutral | success | warning | danger`.
+
+**`Countdown`.** `mode: up` показывает время с момента `target`, `mode: down` показывает время до `target`. `from` замораживает счётчик на указанном моменте (кальян завершён). Без `from` счётчик тикает от `serverNow()` раз в секунду.
+
+**Статус без цвета.** `src/ui/status.ts` сопоставляет каждому `TableStatus` цвет, иконку и слово из `ru.ts`. Каждый примитив со статусом берёт все три.
+
+**Ресинк.** Разрыв `seq` клиент закрывает повторным `subscribe` на тот же зал, а не `GET /halls/{id}/state`: ответ на `subscribe` несёт `seq`, от которого считаются следующие события. `GET /halls/{id}/state` остаётся для REST-клиентов и тестов.
+
+**Файлы клиента** (дополняют раздел 5):
+
+```
+src/api/decode.ts     разбор unknown в типы контракта на границе сети
+src/api/session.ts    хранение токенов в expo-secure-store
+src/store/auth.ts     сессия и /me, гард читает отсюда
+src/ui/status.ts      цвет, иконка и слово статуса
+src/ui/useServerNow.ts хук, который перерисовывает компонент по serverNow()
+src/env.d.ts          типы EXPO_PUBLIC_*
+```
+
+ESLint запрещает `Date.now()` во всём клиенте, кроме `src/ws/clock.ts`.
