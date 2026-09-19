@@ -10,9 +10,10 @@ type Props = {
   placeholder?: string;
   error?: string;
   keyboardType?: KeyboardTypeOptions;
+  secure?: boolean;
 };
 
-export function Input({ value, onChangeText, label, placeholder, error, keyboardType }: Props) {
+export function Input({ value, onChangeText, label, placeholder, error, keyboardType, secure }: Props) {
   return (
     <View style={styles.wrap}>
       {label ? (
@@ -27,6 +28,9 @@ export function Input({ value, onChangeText, label, placeholder, error, keyboard
         placeholder={placeholder}
         placeholderTextColor={color.textMuted}
         keyboardType={keyboardType}
+        secureTextEntry={secure}
+        autoCapitalize={secure || keyboardType === 'email-address' ? 'none' : 'sentences'}
+        autoCorrect={!secure && keyboardType !== 'email-address'}
         style={[styles.input, !!error && styles.invalid]}
       />
       {error ? (

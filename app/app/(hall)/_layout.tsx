@@ -7,8 +7,7 @@ import { Icon } from '../../src/ui';
 import { color } from '../../src/ui/tokens';
 
 export default function HallLayout() {
-  // Slice 0 opens the first hall; the hall picker arrives with join.
-  const hallId = useAuthStore((s) => s.me?.halls[0]?.id ?? null);
+  const hallId = useAuthStore((s) => s.hallId ?? s.me?.halls[0]?.id ?? null);
   useHallConnection(hallId);
 
   return (
