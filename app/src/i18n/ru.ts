@@ -49,6 +49,9 @@ export const t = {
     network: 'Нет связи с сервером',
     unknown: 'Что-то пошло не так',
   },
+  settings: {
+    title: 'Настройки',
+  },
   kitchen: {
     title: 'Примитивы',
   },
