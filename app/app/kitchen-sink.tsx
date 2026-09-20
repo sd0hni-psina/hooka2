@@ -152,6 +152,11 @@ export default function KitchenSink() {
           onTablePress={() => undefined}
         />
       </Section>
+      <Section title="HallCanvas fill">
+        <View style={styles.canvasBox}>
+          <HallCanvas fill tables={sampleTables} statuses={sampleStatuses} onTablePress={() => undefined} />
+        </View>
+      </Section>
       <Section title="Toast">
         <Toast message="Стол 15: стряхните угли" tone="warning" actionTitle="Беру" onAction={() => undefined} />
         <Toast message="Нет связи" tone="danger" />
@@ -186,4 +191,5 @@ export default function KitchenSink() {
 const styles = StyleSheet.create({
   section: { gap: space[2] },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: space[2], alignItems: 'center' },
+  canvasBox: { height: 220 },
 });

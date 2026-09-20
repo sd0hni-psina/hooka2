@@ -3,8 +3,10 @@ import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { archiveTable, createHall, createTable, patchTable, setLayout } from '../../src/api/endpoints';
-import type { Shape, Table, TableStatus } from '../../src/api/types';
-import { overlappingIds, placementOf } from '../../src/domain/layout';
+import type { Table, TableStatus } from '../../src/api/types';
+import {
+  applyPreset, clampPosition, GRID, overlappingIds, placementOf, presetOf, resize, type ShapePreset,
+} from '../../src/domain/layout';
 import { describeError, type FieldErrors } from '../../src/features/join/form';
 import { t } from '../../src/i18n/ru';
 import { useAuthStore } from '../../src/store/auth';
@@ -83,7 +85,6 @@ export default function LayoutEditor() {
 
   return (
     <Screen
-      scroll
       footer={
         <>
           {message ? <Toast message={message} tone="danger" /> : null}
@@ -121,6 +122,7 @@ export default function LayoutEditor() {
       </Text>
       {warnIds.size > 0 ? <Toast message={t.layout.overlap} tone="warning" /> : null}
       <HallCanvas
+        fill
         tables={tables}
         statuses={statuses}
         editable
@@ -133,7 +135,7 @@ export default function LayoutEditor() {
       <Sheet
         visible={selected !== null}
         onClose={() => setSelected(null)}
-        title={selected ? t.table.title(selected.label) : ''}
+        title={selected ? `${t.layout.settings}: ${selected.label}` : t.layout.settings}
         footer={
           <>
             <Button
@@ -145,7 +147,12 @@ export default function LayoutEditor() {
                 if (!selected) return;
                 await patchTable(selected.id, {
                   label: selected.label, shape: selected.shape, w: selected.w, h: selected.h,
-                  rotation: selected.rotation, seats: selected.seats,
+                  x: selected.x, y: selected.y, rotation: selected.rotation, seats: selected.seats,
+                });
+                setMoved((prev) => {
+                  const next = { ...prev };
+                  delete next[selected.id];
+                  return next;
                 });
                 setSelected(null);
               })}
@@ -157,26 +164,90 @@ export default function LayoutEditor() {
         {selected ? (
           <View style={styles.form}>
             <Input label={t.layout.label} value={selected.label} onChangeText={(label) => setSelected({ ...selected, label })} error={fields.label} />
+
+            <Text variant="label" color="textMuted">
+              {t.layout.shape}
+            </Text>
             <SegmentedControl
               options={[
                 { value: 'rect', label: t.layout.rect },
+                { value: 'square', label: t.layout.square },
                 { value: 'circle', label: t.layout.circle },
               ]}
-              value={selected.shape}
-              onChange={(shape: Shape) => setSelected({ ...selected, shape })}
+              value={presetOf(selected)}
+              onChange={(preset: ShapePreset) => setSelected({ ...selected, ...applyPreset(selected, preset) })}
             />
+
             <Text variant="label" color="textMuted">
-              {t.layout.width}
+              {presetOf(selected) === 'circle' ? t.layout.diameter : presetOf(selected) === 'square' ? t.layout.side : t.layout.width}
             </Text>
-            <NumberField value={selected.w} min={1} max={40} step={1} onChange={(w) => setSelected({ ...selected, w })} />
-            <Text variant="label" color="textMuted">
-              {t.layout.height}
-            </Text>
-            <NumberField value={selected.h} min={1} max={40} step={1} onChange={(h) => setSelected({ ...selected, h })} />
+            <NumberField
+              value={selected.w}
+              min={1}
+              max={40}
+              step={1}
+              onChange={(w) => setSelected({ ...selected, ...resize(selected, 'w', w) })}
+            />
+            {presetOf(selected) === 'rect' ? (
+              <>
+                <Text variant="label" color="textMuted">
+                  {t.layout.height}
+                </Text>
+                <NumberField
+                  value={selected.h}
+                  min={1}
+                  max={40}
+                  step={1}
+                  onChange={(h) => setSelected({ ...selected, ...resize(selected, 'h', h) })}
+                />
+              </>
+            ) : null}
+
             <Text variant="label" color="textMuted">
               {t.layout.rotation}
             </Text>
-            <NumberField value={selected.rotation} min={0} max={345} step={15} suffix="°" onChange={(rotation) => setSelected({ ...selected, rotation })} />
+            <SegmentedControl
+              options={[
+                { value: '0', label: '0°' },
+                { value: '45', label: '45°' },
+                { value: '90', label: '90°' },
+                { value: '135', label: '135°' },
+              ]}
+              value={String(selected.rotation)}
+              onChange={(v) => setSelected({ ...selected, rotation: Number(v) })}
+            />
+            <NumberField
+              value={selected.rotation}
+              min={0}
+              max={345}
+              step={15}
+              suffix="°"
+              onChange={(rotation) => setSelected({ ...selected, rotation })}
+            />
+
+            <Text variant="label" color="textMuted">
+              {t.layout.position}
+            </Text>
+            <Text variant="label" color="textMuted">
+              {t.layout.positionHint}
+            </Text>
+            <NumberField
+              value={selected.x}
+              min={0}
+              max={GRID - selected.w}
+              step={1}
+              suffix={t.layout.x}
+              onChange={(x) => setSelected({ ...selected, ...clampPosition(x, selected.y, selected.w, selected.h) })}
+            />
+            <NumberField
+              value={selected.y}
+              min={0}
+              max={GRID - selected.h}
+              step={1}
+              suffix={t.layout.y}
+              onChange={(y) => setSelected({ ...selected, ...clampPosition(selected.x, y, selected.w, selected.h) })}
+            />
+
             <Text variant="label" color="textMuted">
               {t.layout.seats}
             </Text>

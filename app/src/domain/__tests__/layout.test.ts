@@ -1,5 +1,8 @@
 import type { Table } from '../../api/types';
-import { changedPlacements, clampPosition, overlappingIds, overlaps, snapToGrid, type Placement } from '../layout';
+import {
+  applyPreset, changedPlacements, clampPosition, overlappingIds, overlaps, presetOf, resize, snapToGrid,
+  type Placement,
+} from '../layout';
 
 const at = (id: string, x: number, y: number, w = 10, h = 10, rotation = 0): Placement => ({ id, x, y, w, h, rotation });
 
@@ -47,5 +50,32 @@ describe('changedPlacements', () => {
   });
   it('sends a table that is not on the server yet', () => {
     expect(changedPlacements([at('c', 0, 0)], saved).map((p) => p.id)).toEqual(['c']);
+  });
+});
+
+describe('shape presets', () => {
+  const rect = { shape: 'rect' as const, w: 12, h: 8 };
+
+  it('names what the table looks like', () => {
+    expect(presetOf(rect)).toBe('rect');
+    expect(presetOf({ shape: 'rect', w: 10, h: 10 })).toBe('square');
+    expect(presetOf({ shape: 'circle', w: 10, h: 10 })).toBe('circle');
+  });
+
+  it('keeps the longer side when the shape changes', () => {
+    expect(applyPreset(rect, 'circle')).toEqual({ shape: 'circle', w: 12, h: 12 });
+    expect(applyPreset(rect, 'square')).toEqual({ shape: 'rect', w: 12, h: 12 });
+    expect(applyPreset({ shape: 'circle', w: 10, h: 10 }, 'rect')).toEqual({ shape: 'rect', w: 10, h: 6 });
+  });
+
+  it('resizes a circle and a square symmetrically', () => {
+    expect(resize({ shape: 'circle', w: 10, h: 10 }, 'w', 14)).toEqual({ shape: 'circle', w: 14, h: 14 });
+    expect(resize({ shape: 'rect', w: 10, h: 10 }, 'h', 6)).toEqual({ shape: 'rect', w: 6, h: 6 });
+    expect(resize(rect, 'h', 5)).toEqual({ shape: 'rect', w: 12, h: 5 });
+  });
+
+  it('keeps sides inside the allowed range', () => {
+    expect(resize(rect, 'w', 0)).toEqual({ shape: 'rect', w: 1, h: 8 });
+    expect(resize(rect, 'w', 99)).toEqual({ shape: 'rect', w: 40, h: 8 });
   });
 });

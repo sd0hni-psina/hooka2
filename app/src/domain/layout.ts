@@ -1,4 +1,4 @@
-import type { Table } from '../api/types';
+import type { Shape, Table } from '../api/types';
 
 // The hall is a GRID x GRID unit square, tech.md section 7.
 export const GRID = 100;
@@ -98,4 +98,38 @@ export function changedPlacements(current: Placement[], saved: Table[]): Placeme
     const s = bySaved.get(p.id);
     return !s || s.x !== p.x || s.y !== p.y || s.w !== p.w || s.h !== p.h || s.rotation !== p.rotation;
   });
+}
+
+// ShapePreset is what the editor offers instead of raw width and height:
+// the contract knows only rect and circle, tech.md section 11.
+export type ShapePreset = 'circle' | 'square' | 'rect';
+
+export type Sized = { shape: Shape; w: number; h: number };
+
+export function presetOf(t: Sized): ShapePreset {
+  if (t.shape === 'circle') return 'circle';
+  return t.w === t.h ? 'square' : 'rect';
+}
+
+// applyPreset keeps the longer side and derives the other one, so switching
+// shapes never throws a table off the grid.
+export function applyPreset(t: Sized, preset: ShapePreset): Sized {
+  const side = Math.max(t.w, t.h);
+  switch (preset) {
+    case 'circle':
+      return { shape: 'circle', w: side, h: side };
+    case 'square':
+      return { shape: 'rect', w: side, h: side };
+    case 'rect':
+      return { shape: 'rect', w: side, h: t.w === t.h ? Math.max(1, Math.round(side * 0.6)) : Math.min(t.w, t.h) };
+  }
+}
+
+// resize changes one side and keeps the shape honest: a circle and a square
+// stay symmetric.
+export function resize(t: Sized, side: 'w' | 'h', value: number): Sized {
+  const clamped = Math.min(MAX_SIDE, Math.max(1, Math.round(value)));
+  const preset = presetOf(t);
+  if (preset === 'rect') return { ...t, [side]: clamped };
+  return { ...t, w: clamped, h: clamped };
 }

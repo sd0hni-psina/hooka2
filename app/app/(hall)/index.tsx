@@ -76,7 +76,7 @@ export default function HallScreen() {
   const manager = me?.staff.role !== 'master';
 
   return (
-    <Screen scroll>
+    <Screen>
       <AppBar
         title={hall?.name ?? t.appName}
         subtitle={me?.venue.name}
@@ -131,11 +131,13 @@ export default function HallScreen() {
       ) : null}
 
       {data.state ? (
-        <HallCanvas tables={data.state.tables} statuses={statuses} badges={badges} onTablePress={openTable} />
+        <HallCanvas fill tables={data.state.tables} statuses={statuses} badges={badges} onTablePress={openTable} />
       ) : me && me.halls.length === 0 ? (
-        <EmptyState icon="grid" title={t.hall.noHalls} message={t.hall.noHallsHint} />
+        <View style={styles.fill}>
+          <EmptyState icon="grid" title={t.hall.noHalls} message={t.hall.noHallsHint} />
+        </View>
       ) : (
-        <View style={styles.center}>
+        <View style={[styles.fill, styles.center]}>
           <Spinner size="large" />
           <Text variant="label" color="textMuted">
             {t.hall.loading}
@@ -174,5 +176,6 @@ const styles = StyleSheet.create({
   strip: { gap: space[2] },
   stripRow: { gap: space[3], paddingRight: space[4] },
   taskCard: { width: 220 },
-  center: { alignItems: 'center', gap: space[3], padding: space[6] },
+  center: { alignItems: 'center', justifyContent: 'center', gap: space[3] },
+  fill: { flex: 1 },
 });

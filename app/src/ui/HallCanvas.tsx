@@ -7,10 +7,12 @@ import Svg, { Rect } from 'react-native-svg';
 import type { Table, TableStatus } from '../api/types';
 import { clampPosition, GRID } from '../domain/layout';
 import { TableShape } from './TableShape';
-import { color, radius } from './tokens';
+import { color, radius, space } from './tokens';
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
+// Breathing room around the tables, in grid units.
+const PADDING = 4;
 
 type Props = {
   tables: Table[];
@@ -21,10 +23,36 @@ type Props = {
   badges?: Record<string, string>;
   warnIds?: Set<string>;
   selectedId?: string | null;
+  // fill lets the canvas take all the space its parent gives it instead of
+  // staying a square.
+  fill?: boolean;
 };
 
-export function HallCanvas({ tables, statuses, onTablePress, editable, onTableMove, badges, warnIds, selectedId }: Props) {
-  const [size, setSize] = useState(0);
+type Box = { x: number; y: number; w: number; h: number };
+
+// visibleBox frames the tables that exist, so a hall placed in one corner of
+// the grid still fills the screen. An empty hall shows the whole grid.
+function visibleBox(tables: Table[], editable: boolean): Box {
+  if (tables.length === 0 || editable) return { x: 0, y: 0, w: GRID, h: GRID };
+  let left = GRID;
+  let top = GRID;
+  let right = 0;
+  let bottom = 0;
+  for (const t of tables) {
+    left = Math.min(left, t.x);
+    top = Math.min(top, t.y);
+    right = Math.max(right, t.x + t.w);
+    bottom = Math.max(bottom, t.y + t.h);
+  }
+  const x = Math.max(0, left - PADDING);
+  const y = Math.max(0, top - PADDING);
+  return { x, y, w: Math.min(GRID - x, right - x + PADDING), h: Math.min(GRID - y, bottom - y + PADDING) };
+}
+
+export function HallCanvas({
+  tables, statuses, onTablePress, editable, onTableMove, badges, warnIds, selectedId, fill,
+}: Props) {
+  const [size, setSize] = useState({ w: 0, h: 0 });
   // The grabbed table and where it stood when the finger landed. Gesture
   // callbacks are rebuilt on every render, so plain state is enough.
   const [grabbed, setGrabbed] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -36,7 +64,12 @@ export function HallCanvas({ tables, statuses, onTablePress, editable, onTableMo
   const savedX = useSharedValue(0);
   const savedY = useSharedValue(0);
 
-  const unit = size > 0 ? size / GRID : 0;
+  const box = visibleBox(tables, !!editable);
+  // The SVG keeps the aspect ratio, so the drawing sits centered in the frame.
+  const unit = size.w > 0 && size.h > 0 ? Math.min(size.w / box.w, size.h / box.h) : 0;
+  const offsetX = (size.w - box.w * unit) / 2;
+  const offsetY = (size.h - box.h * unit) / 2;
+  const toGrid = (px: number, py: number) => ({ x: box.x + (px - offsetX) / unit, y: box.y + (py - offsetY) / unit });
 
   // In edit mode the pan gesture drags a table instead of the canvas, so the
   // finger stays on the table it grabbed.
@@ -44,9 +77,10 @@ export function HallCanvas({ tables, statuses, onTablePress, editable, onTableMo
     .enabled(!!editable && unit > 0)
     .runOnJS(true)
     .onStart((e) => {
-      const gx = e.x / unit;
-      const gy = e.y / unit;
-      const hit = [...tables].reverse().find((t) => gx >= t.x && gx <= t.x + t.w && gy >= t.y && gy <= t.y + t.h);
+      const point = toGrid(e.x, e.y);
+      const hit = [...tables].reverse().find(
+        (t) => point.x >= t.x && point.x <= t.x + t.w && point.y >= t.y && point.y <= t.y + t.h,
+      );
       setGrabbed(hit ? { id: hit.id, x: hit.x, y: hit.y } : null);
     })
     .onUpdate((e) => {
@@ -90,18 +124,25 @@ export function HallCanvas({ tables, statuses, onTablePress, editable, onTableMo
     });
 
   const animated = useAnimatedStyle(() => ({
+    flex: 1,
     transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: scale.value }],
   }));
 
-  const onLayout = (e: LayoutChangeEvent) => setSize(e.nativeEvent.layout.width);
+  const onLayout = (e: LayoutChangeEvent) =>
+    setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height });
 
   return (
-    <View style={styles.frame} onLayout={onLayout}>
+    <View style={[styles.frame, fill ? styles.fill : styles.square]} onLayout={onLayout}>
       <GestureDetector gesture={Gesture.Simultaneous(drag, pinch, pan, reset)}>
         <Animated.View style={animated}>
-          {size > 0 ? (
-            <Svg width={size} height={size} viewBox={`0 0 ${GRID} ${GRID}`}>
-              <Rect x={0} y={0} width={GRID} height={GRID} fill={color.bg} />
+          {unit > 0 ? (
+            <Svg
+              width={size.w}
+              height={size.h}
+              viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
+              preserveAspectRatio="xMidYMid meet"
+            >
+              <Rect x={box.x} y={box.y} width={box.w} height={box.h} fill={color.bg} />
               {tables.map((t) => (
                 <TableShape
                   key={t.id}
@@ -125,11 +166,13 @@ export function HallCanvas({ tables, statuses, onTablePress, editable, onTableMo
 const styles = StyleSheet.create({
   frame: {
     width: '100%',
-    aspectRatio: 1,
     overflow: 'hidden',
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: color.border,
     backgroundColor: color.bg,
+    padding: space[1],
   },
+  square: { aspectRatio: 1 },
+  fill: { flex: 1 },
 });
