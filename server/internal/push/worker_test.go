@@ -3,8 +3,6 @@ package push_test
 import (
 	"context"
 	"errors"
-	"io"
-	"log/slog"
 	"testing"
 	"time"
 
@@ -32,7 +30,7 @@ func setup(t *testing.T) env {
 	var eventID string
 	require.NoError(t, pool.QueryRow(ctx,
 		`select id from service_events where hookah_id = $1 and state = 'due'`, fx.BusyHookahID).Scan(&eventID))
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	log := discardLogger()
 	fake := push.NewFake(log)
 	return env{pool: pool, fx: fx, eventID: eventID, fake: fake, worker: push.NewWorker(pool, fake, log, time.Second)}
 }
@@ -56,7 +54,28 @@ func (e env) status(t *testing.T, id string) (string, *string) {
 	return status, errText
 }
 
+func (e env) retries(t *testing.T, id string) (int, *time.Time) {
+	var retries int
+	var retryAt *time.Time
+	require.NoError(t, e.pool.QueryRow(context.Background(),
+		`select retries, retry_at from push_deliveries where id = $1`, id).Scan(&retries, &retryAt))
+	return retries, retryAt
+}
+
 func ptr(s string) *string { return &s }
+
+func (e env) exec(t *testing.T, sql string, args ...any) {
+	t.Helper()
+	_, err := e.pool.Exec(context.Background(), sql, args...)
+	require.NoError(t, err)
+}
+
+func (e env) count(t *testing.T, tail string, args ...any) int {
+	t.Helper()
+	var n int
+	require.NoError(t, e.pool.QueryRow(context.Background(), "select count(*) from "+tail, args...).Scan(&n))
+	return n
+}
 
 func TestWorker(t *testing.T) {
 	t.Run("fake sender marks the queued delivery sent with a valid payload", func(t *testing.T) {
@@ -99,17 +118,44 @@ func TestWorker(t *testing.T) {
 		require.Empty(t, e.fake.Sent())
 	})
 
-	t.Run("transport error marks the delivery failed", func(t *testing.T) {
+	t.Run("transport error waits and gives up after three tries", func(t *testing.T) {
 		e := setup(t)
 		id := e.queue(t, e.fx.Masters[0].SessionID, ptr("ExponentPushToken[abc]"))
-		e.fake.Next = append(e.fake.Next, func([]push.Message) ([]push.Result, error) {
-			return nil, errors.New("expo 500")
-		})
+		fail := func([]push.Message) ([]push.Result, error) { return nil, errors.New("expo 500") }
+
+		for attempt := 1; attempt <= 2; attempt++ {
+			e.fake.Next = append(e.fake.Next, fail)
+			_, err := e.worker.RunOnce(context.Background())
+			require.NoError(t, err)
+			status, errText := e.status(t, id)
+			require.Equal(t, "queued", status, "attempt %d waits for the next try", attempt)
+			require.Contains(t, *errText, "expo 500")
+			retries, retryAt := e.retries(t, id)
+			require.Equal(t, attempt, retries)
+			require.NotNil(t, retryAt)
+			// The worker skips rows whose wait has not passed yet.
+			e.exec(t, `update push_deliveries set retry_at = now() - interval '1 second' where id = $1`, id)
+		}
+
+		e.fake.Next = append(e.fake.Next, fail)
 		_, err := e.worker.RunOnce(context.Background())
 		require.NoError(t, err)
-		status, errText := e.status(t, id)
+		status, _ := e.status(t, id)
 		require.Equal(t, "failed", status)
-		require.Contains(t, *errText, "expo 500")
+	})
+
+	t.Run("a delivery waiting for its retry is skipped", func(t *testing.T) {
+		e := setup(t)
+		id := e.queue(t, e.fx.Masters[0].SessionID, ptr("ExponentPushToken[abc]"))
+		e.fake.Next = append(e.fake.Next, func([]push.Message) ([]push.Result, error) { return nil, errors.New("expo 500") })
+		_, err := e.worker.RunOnce(context.Background())
+		require.NoError(t, err)
+
+		n, err := e.worker.RunOnce(context.Background())
+		require.NoError(t, err)
+		require.Zero(t, n)
+		require.Len(t, e.fake.Sent(), 1)
+		_ = id
 	})
 
 	t.Run("malformed token fails the fake loudly", func(t *testing.T) {
@@ -118,7 +164,20 @@ func TestWorker(t *testing.T) {
 		_, err := e.worker.RunOnce(context.Background())
 		require.NoError(t, err)
 		status, errText := e.status(t, id)
-		require.Equal(t, "failed", status)
+		require.Equal(t, "queued", status, "a bad payload is a transport failure of the batch")
 		require.Contains(t, *errText, "bad token")
+	})
+
+	t.Run("expo rejecting the device clears its token", func(t *testing.T) {
+		e := setup(t)
+		id := e.queue(t, e.fx.Masters[0].SessionID, ptr("ExponentPushToken[gone]"))
+		e.fake.Next = append(e.fake.Next, func(msgs []push.Message) ([]push.Result, error) {
+			return []push.Result{{Status: push.StatusInvalidToken, Error: "DeviceNotRegistered"}}, nil
+		})
+		_, err := e.worker.RunOnce(context.Background())
+		require.NoError(t, err)
+		status, _ := e.status(t, id)
+		require.Equal(t, "invalid_token", status)
+		require.Equal(t, 0, e.count(t, `staff_sessions where id = $1 and expo_push_token is not null`, e.fx.Masters[0].SessionID))
 	})
 }

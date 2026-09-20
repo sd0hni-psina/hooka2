@@ -54,8 +54,10 @@ func run(cfg config.Config, log *slog.Logger) error {
 	switch cfg.PushProvider {
 	case "fake":
 		sender = push.NewFake(log)
+	case "expo":
+		sender = push.NewExpo(cfg.ExpoAccessToken)
 	default:
-		return fmt.Errorf("push provider %q is not available yet", cfg.PushProvider)
+		return fmt.Errorf("unknown push provider %q", cfg.PushProvider)
 	}
 
 	hub := realtime.NewHub(log)
@@ -93,7 +95,8 @@ func run(cfg config.Config, log *slog.Logger) error {
 	bg, cancelBG := context.WithCancel(ctx)
 	defer cancelBG()
 	wg.Add(2)
-	go func() { defer wg.Done(); scheduler.New(log, cfg.SchedulerTick, hookahSvc).Run(bg) }()
+	pushQueue := push.NewQueue(pool, hub)
+	go func() { defer wg.Done(); scheduler.New(log, cfg.SchedulerTick, hookahSvc, pushQueue).Run(bg) }()
 	go func() { defer wg.Done(); push.NewWorker(pool, sender, log, cfg.PushTick).Run(bg) }()
 
 	errc := make(chan error, 1)

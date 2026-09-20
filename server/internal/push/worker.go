@@ -64,7 +64,7 @@ func (w *Worker) RunOnce(ctx context.Context) (int, error) {
 			join service_events e on e.id = d.service_event_id
 			join hookahs h on h.id = e.hookah_id
 			join tables t on t.id = h.table_id
-			where d.status = 'queued'
+			where d.status = 'queued' and (d.retry_at is null or d.retry_at <= now())
 			order by d.created_at
 			for update of d skip locked
 			limit $1`, batchSize)
@@ -120,11 +120,20 @@ func (w *Worker) RunOnce(ctx context.Context) (int, error) {
 			if err := mark(ctx, tx, d.id, res); err != nil {
 				return err
 			}
+			if res.Status == StatusInvalidToken {
+				if err := w.clearToken(ctx, tx, d.id); err != nil {
+					return err
+				}
+			}
 		}
 		return nil
 	})
 	return n, err
 }
+
+// maxTransportRetries matches the 5, 15, 45 second ladder of tech.md
+// section 19.9.
+const maxTransportRetries = 3
 
 func mark(ctx context.Context, tx pgx.Tx, id string, r Result) error {
 	var receipt, errText *string
@@ -134,10 +143,39 @@ func mark(ctx context.Context, tx pgx.Tx, id string, r Result) error {
 	if r.Error != "" {
 		errText = &r.Error
 	}
+	if r.Status == StatusFailed {
+		// A transport failure waits and tries again until the ladder ends.
+		if _, err := tx.Exec(ctx, `
+			update push_deliveries
+			set retries = retries + 1,
+			    error = $2,
+			    status = case when retries + 1 >= $3 then 'failed' else 'queued' end,
+			    retry_at = case
+			        when retries + 1 >= $3 then null
+			        when retries = 0 then now() + interval '5 seconds'
+			        when retries = 1 then now() + interval '15 seconds'
+			        else now() + interval '45 seconds'
+			    end
+			where id = $1`, id, errText, maxTransportRetries); err != nil {
+			return fmt.Errorf("retry delivery %s: %w", id, err)
+		}
+		return nil
+	}
 	if _, err := tx.Exec(ctx,
-		`update push_deliveries set status = $2, provider_receipt = $3, error = $4 where id = $1`,
+		`update push_deliveries set status = $2, provider_receipt = $3, error = $4, retry_at = null where id = $1`,
 		id, r.Status, receipt, errText); err != nil {
 		return fmt.Errorf("mark delivery %s: %w", id, err)
+	}
+	return nil
+}
+
+// ClearInvalidToken drops the Expo token of a session Expo rejected, so the
+// next tick does not queue for it, tech.md section 19.9.
+func (w *Worker) clearToken(ctx context.Context, tx pgx.Tx, deliveryID string) error {
+	if _, err := tx.Exec(ctx,
+		`update staff_sessions set expo_push_token = null
+		 where id = (select session_id from push_deliveries where id = $1)`, deliveryID); err != nil {
+		return fmt.Errorf("clear push token: %w", err)
 	}
 	return nil
 }
