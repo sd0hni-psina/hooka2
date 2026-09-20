@@ -465,3 +465,129 @@ func statusOf(c Context, now time.Time) domain.Status {
 	h.Events = c.Events
 	return domain.HookahStatus(&h, c.Row.Plan.StatusPlan(), now)
 }
+
+type ClaimedData struct {
+	EventID       string    `json:"event_id"`
+	HookahID      string    `json:"hookah_id"`
+	ClaimedBy     string    `json:"claimed_by"`
+	ClaimedByName string    `json:"claimed_by_name"`
+	ClaimedAt     time.Time `json:"claimed_at"`
+}
+
+type ConfirmedData struct {
+	EventID         string        `json:"event_id"`
+	HookahID        string        `json:"hookah_id"`
+	ConfirmedBy     string        `json:"confirmed_by"`
+	ConfirmedByName string        `json:"confirmed_by_name"`
+	ConfirmedAt     time.Time     `json:"confirmed_at"`
+	ConfirmedEarly  bool          `json:"confirmed_early"`
+	Status          domain.Status `json:"status"`
+}
+
+// Claim takes a due task for the caller, tech.md section 19.9. A task another
+// master already holds is not an error: the caller gets the current event.
+func (s *Service) Claim(ctx context.Context, c auth.Claims, eventID string) (domain.ServiceEvent, error) {
+	if !domain.ValidUUID(eventID) {
+		return domain.ServiceEvent{}, notFound("service event", eventID)
+	}
+	now := domain.DBTime(s.now())
+
+	var out domain.ServiceEvent
+	var hookahID, hallID string
+	var taken bool
+	err := store.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
+		row, found, err := s.repo.GetEventForUpdate(ctx, tx, c.VenueID, eventID)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return notFound("service event", eventID)
+		}
+		take, err := domain.DecideClaim(row.Hookah.State, row.Event)
+		if err != nil {
+			return fmt.Errorf("claim %s: %w", eventID, err)
+		}
+		if take {
+			if taken, err = s.repo.Claim(ctx, tx, eventID, c.StaffID, now); err != nil {
+				return err
+			}
+		}
+		hookahID, hallID = row.Hookah.ID, row.Hookah.HallID
+		out, err = s.repo.Event(ctx, tx, eventID)
+		return err
+	})
+	if err != nil {
+		return domain.ServiceEvent{}, err
+	}
+	if taken {
+		s.hub.Publish(c.VenueID, &hallID, realtime.TypeServiceClaimed, ClaimedData{
+			EventID: eventID, HookahID: hookahID, ClaimedBy: c.StaffID,
+			ClaimedByName: derefName(out.ClaimedByName), ClaimedAt: now,
+		})
+	}
+	return out, nil
+}
+
+// Confirm closes a task without moving any deadline, tech.md section 7.
+func (s *Service) Confirm(ctx context.Context, c auth.Claims, eventID string) (domain.ServiceEvent, error) {
+	if !domain.ValidUUID(eventID) {
+		return domain.ServiceEvent{}, notFound("service event", eventID)
+	}
+	now := domain.DBTime(s.now())
+
+	var out domain.ServiceEvent
+	var status domain.Status
+	var hookahID, hallID string
+	var confirmed, early bool
+	err := store.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
+		row, found, err := s.repo.GetEventForUpdate(ctx, tx, c.VenueID, eventID)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return notFound("service event", eventID)
+		}
+		all, err := s.repo.Events(ctx, tx, row.Hookah.ID)
+		if err != nil {
+			return err
+		}
+		decision, err := domain.DecideConfirm(row.Hookah.State, row.Event, all)
+		if err != nil {
+			return fmt.Errorf("confirm %s: %w", eventID, err)
+		}
+		if decision != domain.ConfirmAlreadyDone {
+			early = decision == domain.ConfirmEarly
+			if confirmed, err = s.repo.Confirm(ctx, tx, eventID, c.StaffID, early, now); err != nil {
+				return err
+			}
+		}
+		hookahID, hallID = row.Hookah.ID, row.Hookah.HallID
+		if out, err = s.repo.Event(ctx, tx, eventID); err != nil {
+			return err
+		}
+		h, err := s.load(ctx, tx, row.Hookah, now)
+		if err != nil {
+			return err
+		}
+		status = h.Status
+		return nil
+	})
+	if err != nil {
+		return domain.ServiceEvent{}, err
+	}
+	if confirmed {
+		s.hub.Publish(c.VenueID, &hallID, realtime.TypeServiceConfirm, ConfirmedData{
+			EventID: eventID, HookahID: hookahID, ConfirmedBy: c.StaffID,
+			ConfirmedByName: derefName(out.ConfirmedByName), ConfirmedAt: now,
+			ConfirmedEarly: early, Status: status,
+		})
+	}
+	return out, nil
+}
+
+func derefName(name *string) string {
+	if name == nil {
+		return ""
+	}
+	return *name
+}

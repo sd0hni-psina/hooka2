@@ -20,6 +20,8 @@ func (h *Handler) Register(r *httpx.Router) {
 	r.Private("POST /tables/{table_id}/hookah", h.start)
 	r.Private("POST /hookahs/{hookah_id}/transfer", h.transfer)
 	r.Private("POST /hookahs/{hookah_id}/finish", h.finish)
+	r.Private("POST /service-events/{event_id}/claim", h.claim)
+	r.Private("POST /service-events/{event_id}/confirm", h.confirm)
 }
 
 func claims(r *http.Request) (auth.Claims, error) {
@@ -95,5 +97,31 @@ func (h *Handler) finish(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	httpx.JSON(w, http.StatusOK, hookah)
+	return nil
+}
+
+func (h *Handler) claim(w http.ResponseWriter, r *http.Request) error {
+	c, err := claims(r)
+	if err != nil {
+		return err
+	}
+	event, err := h.svc.Claim(r.Context(), c, r.PathValue("event_id"))
+	if err != nil {
+		return err
+	}
+	httpx.JSON(w, http.StatusOK, event)
+	return nil
+}
+
+func (h *Handler) confirm(w http.ResponseWriter, r *http.Request) error {
+	c, err := claims(r)
+	if err != nil {
+		return err
+	}
+	event, err := h.svc.Confirm(r.Context(), c, r.PathValue("event_id"))
+	if err != nil {
+		return err
+	}
+	httpx.JSON(w, http.StatusOK, event)
 	return nil
 }
