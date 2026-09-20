@@ -64,6 +64,24 @@ export class WsClient {
     this.d.onStatus('offline');
   }
 
+  // resume brings the socket back at once instead of waiting out the
+  // backoff. The app returning from background calls it: a master who
+  // unlocks the phone must not read a hall from two minutes ago,
+  // tech.md section 19.15.
+  resume(): void {
+    if (this.stopped) return;
+    this.attempt = 0;
+    if (this.retryTimer !== null) {
+      this.d.clearTimer(this.retryTimer);
+      this.retryTimer = null;
+    }
+    if (this.sock) {
+      this.sendSubscribe();
+      return;
+    }
+    void this.open();
+  }
+
   subscribe(hallId: string | null): void {
     this.hallId = hallId;
     this.sendSubscribe();

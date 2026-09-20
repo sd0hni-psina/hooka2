@@ -1,9 +1,11 @@
 import { useEffect, useRef } from 'react';
+import { AppState } from 'react-native';
 
 import { apiUrl } from '../../api/client';
 import { useAuthStore } from '../../store/auth';
 import { useHallStore } from '../../store/hall';
 import { WsClient } from '../../ws/client';
+import { setTickerActive } from '../../ws/ticker';
 
 function wsUrl(token: string): string {
   return `${apiUrl.replace(/^http/, 'ws')}/api/v1/ws?access_token=${encodeURIComponent(token)}`;
@@ -34,6 +36,18 @@ export function useHallConnection(hallId: string | null) {
       clientRef.current = null;
     };
   }, [signedIn]);
+
+  // A backgrounded app burns no timer and its socket may die silently. On the
+  // way back the ticker fires once and the client reconnects immediately
+  // instead of waiting out the backoff, tech.md section 19.15.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      const active = next === 'active';
+      setTickerActive(active);
+      if (active) clientRef.current?.resume();
+    });
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     useHallStore.getState().selectHall(hallId);
