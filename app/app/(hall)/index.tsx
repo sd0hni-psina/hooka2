@@ -13,8 +13,8 @@ import { useAuthStore } from '../../src/store/auth';
 import { useHallStore } from '../../src/store/hall';
 import { hookahByTable, selectTasks, statusesAt } from '../../src/store/selectors';
 import {
-  AppBar, Badge, Card, ConfirmDialog, EmptyState, HallCanvas, IconButton, ListRow, Screen, Sheet, Spinner, Text,
-  Toast, useServerNow,
+  AppBar, Badge, Button, Card, ConfirmDialog, EmptyState, HallCanvas, Icon, IconButton, ListRow, Screen, Sheet,
+  Spinner, Text, Toast, useServerNow,
 } from '../../src/ui';
 import { space } from '../../src/ui/tokens';
 
@@ -32,7 +32,8 @@ export default function HallScreen() {
   const now = useServerNow();
   const [pending, setPending] = useState<{ table: Table; key: string } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [showHalls, setShowHalls] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
   // v1 has no offline queue, so mutations wait for the socket, tech.md section 19.11.
   const offline = data.connection !== 'online';
 
@@ -83,10 +84,8 @@ export default function HallScreen() {
         left={<ConnectionBadge />}
         right={
           <View style={styles.bar}>
-            {(me?.halls.length ?? 0) > 1 ? (
-              <IconButton icon="grid" accessibilityLabel={t.hall.switch} onPress={() => setShowHalls(true)} />
-            ) : null}
             {manager ? <IconButton icon="settings" accessibilityLabel={t.settings.title} onPress={() => router.push('/settings')} /> : null}
+            <IconButton icon="user" accessibilityLabel={t.profile.title} onPress={() => setShowProfile(true)} />
           </View>
         }
       />
@@ -145,19 +144,66 @@ export default function HallScreen() {
         </View>
       )}
 
-      <Sheet visible={showHalls} onClose={() => setShowHalls(false)} title={t.hall.switch}>
+      <Sheet
+        visible={showProfile}
+        onClose={() => setShowProfile(false)}
+        title={t.profile.title}
+        footer={
+          <Button
+            title={t.logout.action}
+            variant="danger"
+            size="lg"
+            icon="close"
+            onPress={() => {
+              setShowProfile(false);
+              setConfirmLogout(true);
+            }}
+          />
+        }
+      >
+        <ListRow title={me?.staff.display_name ?? ''} subtitle={me ? t.staff.role[me.staff.role] : undefined} />
+        {manager ? (
+          <ListRow
+            title={t.settings.title}
+            right={<Icon name="chevron-right" color="textMuted" />}
+            onPress={() => {
+              setShowProfile(false);
+              router.push('/settings');
+            }}
+          />
+        ) : (
+          <Text variant="label" color="textMuted">
+            {t.profile.onlyManagers}
+          </Text>
+        )}
+        <Text variant="label" color="textMuted">
+          {t.profile.hall}
+        </Text>
         {(me?.halls ?? []).map((h) => (
           <ListRow
             key={h.id}
             title={h.name}
-            right={h.id === data.hallId ? <Badge title={t.hall.online} tone="green" icon="check" /> : undefined}
+            right={h.id === data.hallId ? <Badge title={t.ui.chosen} tone="green" icon="check" /> : undefined}
             onPress={() => {
-              setShowHalls(false);
+              setShowProfile(false);
               void useAuthStore.getState().selectHall(h.id);
             }}
           />
         ))}
       </Sheet>
+
+      <ConfirmDialog
+        visible={confirmLogout}
+        title={t.logout.title}
+        message={t.logout.message}
+        confirmTitle={t.logout.action}
+        destructive
+        onCancel={() => setConfirmLogout(false)}
+        onConfirm={() => {
+          setConfirmLogout(false);
+          void useAuthStore.getState().signOut();
+        }}
+      />
 
       <ConfirmDialog
         visible={pending !== null}

@@ -14,6 +14,7 @@ export const t = {
     increase: 'Больше',
     code: 'Код заведения',
     retry: 'Повторить',
+    chosen: 'Выбран',
   },
   tabs: {
     hall: 'Зал',
@@ -52,6 +53,11 @@ export const t = {
     chooseHall: 'Выберите зал',
     noHalls: 'В заведении пока нет залов',
     continue: 'Продолжить',
+  },
+  profile: {
+    title: 'Профиль',
+    hall: 'Зал',
+    onlyManagers: 'Настройки доступны владельцу и администратору',
   },
   logout: {
     action: 'Выйти',
