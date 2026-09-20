@@ -15,6 +15,7 @@ export const t = {
     code: 'Код заведения',
     retry: 'Повторить',
     chosen: 'Выбран',
+    clear: 'Очистить',
   },
   tabs: {
     hall: 'Зал',

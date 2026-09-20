@@ -26,6 +26,11 @@ const paths = {
   edit: ['M4 20h4L19 9l-4-4L4 16z'],
   trash: ['M4 7h16', 'M9 7V4h6v3', 'M6 7l1 13h10l1-13'],
   info: ['M12 11v6', 'M12 7.5v.5', 'M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18z'],
+  search: ['M11 4a7 7 0 1 1 0 14 7 7 0 0 1 0-14z', 'M16 16l4.5 4.5'],
+  map: ['M9 4L3.5 6.2v13.3L9 17.3', 'M9 4l6 2.7', 'M15 6.7l5.5-2.2v13.3L15 20', 'M9 4v13.3', 'M15 6.7V20'],
+  bolt: ['M13 3l-8 11h6l-1 7 8-11h-6z'],
+  more: ['M6 12h.5', 'M12 12h.5', 'M18 12h.5'],
+  clockOff: ['M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18z', 'M12 7v5l3 2', 'M4 4l16 16'],
 } as const;
 
 export type IconName = keyof typeof paths | 'dot';

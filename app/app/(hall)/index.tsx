@@ -130,7 +130,7 @@ export default function HallScreen() {
       ) : null}
 
       {data.state ? (
-        <HallCanvas fill tables={data.state.tables} statuses={statuses} badges={badges} onTablePress={openTable} />
+        <HallCanvas fill tables={data.state.tables} statuses={statuses} labels={badges} onTablePress={openTable} />
       ) : me && me.halls.length === 0 ? (
         <View style={styles.fill}>
           <EmptyState icon="grid" title={t.hall.noHalls} message={t.hall.noHallsHint} />

@@ -1,10 +1,12 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { Icon, type IconName } from './Icon';
+import { Pressable } from './Pressable';
 import { Text } from './Text';
-import { color, radius, space, type ColorToken } from './tokens';
+import { color, elevation, radius, space, type ColorToken } from './tokens';
+import type { ToastTone } from './toastStore';
 
-export type ToastTone = 'neutral' | 'success' | 'warning' | 'danger';
+export type { ToastTone } from './toastStore';
 
 type Props = { message: string; tone: ToastTone; actionTitle?: string; onAction?: () => void };
 
@@ -24,7 +26,7 @@ export function Toast({ message, tone, actionTitle, onAction }: Props) {
         <Text variant="body">{message}</Text>
       </View>
       {actionTitle && onAction ? (
-        <Pressable accessibilityRole="button" onPress={onAction} style={styles.action}>
+        <Pressable onPress={onAction} style={styles.action} haptic="select">
           <Text variant="label" color="accent">
             {actionTitle}
           </Text>
@@ -41,9 +43,10 @@ const styles = StyleSheet.create({
     gap: space[3],
     padding: space[3],
     borderRadius: radius.md,
-    backgroundColor: color.surfaceAlt,
+    backgroundColor: color.surfaceHigh,
     borderLeftWidth: space[1],
+    ...elevation.toast,
   },
   message: { flex: 1 },
-  action: { padding: space[2] },
+  action: { paddingHorizontal: space[2], paddingVertical: space[1] },
 });

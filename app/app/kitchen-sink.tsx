@@ -136,7 +136,7 @@ export default function KitchenSink() {
               table={{ id: s, hall_id: 'h', label: String(i + 1), shape: i % 2 ? 'circle' : 'rect', x: 4 + i * 24, y: 2, w: 18, h: 18, rotation: 0, seats: 4 }}
               status={s}
               label={String(i + 1)}
-              badge={s === 'yellow' ? 'Ерлан' : undefined}
+              sublabel={s === 'yellow' ? 'Ерлан' : undefined}
               selected={s === 'green'}
               onPress={() => undefined}
             />

@@ -1551,6 +1551,9 @@ export const elevation = { sheet: ..., dialog: ..., toast: ... };
 | `Switch` | `value, onChange, accessibilityLabel` |
 | `SearchField` | `value, onChange, placeholder, onClear` |
 | `ToastHost` | без пропсов, монтируется один раз в корне |
+| `Pressable` | `children, onPress?, onLongPress?, disabled?, style?, haptic?, accessibility*` |
+
+`Pressable` — общая основа всех нажимаемых элементов: масштаб 0.97 на нажатии и тактильный отклик. Своих `Pressable` из `react-native` в фичах нет.
 
 `Toast` теряет роль самостоятельного блока в разметке: сообщения идут через `useToast().show({ message, tone, actionTitle?, onAction?, ttl? })` и рисуются в `ToastHost` поверх экрана. Сообщение с тем же `key` не дублируется. Инлайновые `Toast` в футерах экранов убраны, они прыгали разметкой.
 
@@ -1560,12 +1563,12 @@ export const elevation = { sheet: ..., dialog: ..., toast: ... };
 
 | Проп | Смысл |
 |---|---|
-| `progress?: Record<string, number>` | доля прожитого ресурса кальяна, 0..1, рисуется кольцом вокруг стола |
+| `progress?: Record<string, number>` | доля прожитого ресурса кальяна, 0..1, заполняет обводку стола |
 | `focusId?: string \| null` | стол, на который канва наезжает с анимацией |
 | `onTableLongPress?: (table: Table) => void` | быстрые действия без перехода на экран |
 | `labels?: Record<string, string>` | подпись под номером стола, обновляется по минутам |
 
-`TableShape` дополняется `progress?`, `pulse?` и `dimmed?`. `pulse` включает дыхание обводки для просроченных столов, `dimmed` гасит столы, не попавшие в фильтр поиска. Оба уважают `useReducedMotion`.
+`TableShape` дополняется `sublabel?`, `progress?`, `urgent?` и `dimmed?`. Обводка стола работает гаугом: `progress` заполняет её через `strokeDasharray`, полная обводка означает исчерпанный ресурс. `urgent` рисует ореол вокруг просроченного стола, `dimmed` гасит столы, не попавшие в фильтр поиска. Анимации на схеме нет намеренно: сорок столов, перерисованных на каждом кадре, стоят дороже, чем даёт мигание.
 
 **Экраны** (правят таблицу раздела 12):
 
