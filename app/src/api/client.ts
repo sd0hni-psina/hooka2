@@ -1,6 +1,25 @@
+import Constants from 'expo-constants';
+
 import { ApiError, NetworkError, parseApiError } from './errors';
 
-export const apiUrl = (process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8080').replace(/\/$/, '');
+// A request that never answers must not hold a screen, tech.md section 19.12.
+const TIMEOUT_MS = 10_000;
+const DEV_API_PORT = 8080;
+
+// devHost reuses the machine that serves the JS bundle: in development the
+// API runs on the same laptop, and its address changes with every network.
+function devHost(): string | null {
+  const host = Constants.expoConfig?.hostUri?.split(':')[0];
+  return host ? `http://${host}:${DEV_API_PORT}` : null;
+}
+
+function resolveApiUrl(): string {
+  const configured = process.env.EXPO_PUBLIC_API_URL?.trim();
+  if (configured) return configured;
+  return devHost() ?? 'http://localhost:8080';
+}
+
+export const apiUrl = resolveApiUrl().replace(/\/$/, '');
 export const apiBase = `${apiUrl}/api/v1`;
 
 // AuthProvider is implemented by the auth store. access() returns a token
@@ -27,14 +46,19 @@ async function send(method: string, path: string, opts: Options, token: string |
   const headers: Record<string, string> = { Accept: 'application/json', ...opts.headers };
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
   if (token) headers.Authorization = `Bearer ${token}`;
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), TIMEOUT_MS);
   try {
     return await fetch(`${apiBase}${path}`, {
       method,
       headers,
       body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+      signal: abort.signal,
     });
   } catch (e) {
     throw new NetworkError(e);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
