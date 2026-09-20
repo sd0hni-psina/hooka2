@@ -1,4 +1,4 @@
-import { countdownMs, formatDuration } from '../countdown';
+import { countdownMs, formatDuration, formatShort } from '../countdown';
 
 describe('formatDuration', () => {
   it.each([
@@ -23,5 +23,26 @@ describe('countdownMs', () => {
   });
   it('counts down to the target', () => {
     expect(countdownMs(target, 'down', at('2026-09-19T17:55:00Z'))).toBe(5 * 60_000);
+  });
+});
+
+describe('formatShort', () => {
+  it('reads minutes below an hour', () => {
+    expect(formatShort(0)).toBe('0м');
+    expect(formatShort(59_000)).toBe('0м');
+    expect(formatShort(5 * 60_000 + 30_000)).toBe('5м');
+  });
+
+  it('reads hours and minutes above', () => {
+    expect(formatShort(3_600_000)).toBe('1ч 0м');
+    expect(formatShort(4_920_000)).toBe('1ч 22м');
+  });
+
+  it('never goes negative: a passed deadline reads zero', () => {
+    expect(formatShort(-5000)).toBe('0м');
+  });
+
+  it('holds still inside one minute, so the map does not redraw', () => {
+    expect(formatShort(120_000)).toBe(formatShort(179_000));
   });
 });

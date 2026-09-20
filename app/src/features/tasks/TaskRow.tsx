@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { formatDuration } from '../../domain/countdown';
 import { t } from '../../i18n/ru';
-import type { Task } from '../../store/selectors';
+import { taskAffordance, type Task } from '../../store/selectors';
 import { Badge, Card, IconButton, ListRow, Spinner, Text } from '../../ui';
 import { space } from '../../ui/tokens';
 
@@ -16,28 +16,26 @@ type Props = {
 };
 
 function urgency(task: Task) {
+  const a = taskAffordance(task);
   return {
-    title: `${task.overdueMs >= 0 ? t.tasks.overdue : t.tasks.soon} ${formatDuration(Math.abs(task.overdueMs))}`,
-    tone: task.overdueMs >= 0 ? ('red' as const) : ('yellow' as const),
+    title: `${a.overdue ? t.tasks.overdue : t.tasks.soon} ${formatDuration(a.waitMs)}`,
+    tone: a.overdue ? ('red' as const) : ('yellow' as const),
   };
 }
 
 // Actions sit in the row itself: a master in motion must not open a screen to
 // say Done, tech.md section 19.10.
 function Actions({ task, onClaim, onConfirm }: Pick<Props, 'task' | 'onClaim' | 'onConfirm'>) {
-  if (task.pending) {
-    return (
-      <View style={styles.actions}>
-        <Spinner />
-      </View>
-    );
-  }
+  const a = taskAffordance(task);
   return (
     <View style={styles.actions}>
-      {task.event.state === 'due' && !task.event.claimed_by ? (
+      {a.busy ? <Spinner /> : null}
+      {a.canClaim ? (
         <IconButton icon="hand" variant="filled" accessibilityLabel={t.tasks.claim} onPress={onClaim} haptic="select" />
       ) : null}
-      <IconButton icon="check" variant="accent" accessibilityLabel={t.tasks.confirm} onPress={onConfirm} haptic="success" />
+      {a.canConfirm ? (
+        <IconButton icon="check" variant="accent" accessibilityLabel={t.tasks.confirm} onPress={onConfirm} haptic="success" />
+      ) : null}
     </View>
   );
 }

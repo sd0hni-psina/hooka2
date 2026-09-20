@@ -51,6 +51,7 @@
     ],
     "setupFiles": [
       "<rootDir>/jest.setup.js"
-    ]
+    ],
+    "resolver": "react-native-worklets/jest/resolver.js"
   }
 }

@@ -156,3 +156,27 @@ export function countTasks(d: HallSlice, nowMs: number): { due: number; soon: nu
   }
   return { due, soon };
 }
+
+// What a task row may offer right now. Kept out of the component so the rule
+// is testable without rendering, tech.md section 7.
+export type Affordance = {
+  canClaim: boolean;
+  canConfirm: boolean;
+  busy: boolean;
+  claimedBy: string | null;
+  overdue: boolean;
+  // waitMs is always positive: how late the task is, or how soon it is due.
+  waitMs: number;
+};
+
+export function taskAffordance(task: Task): Affordance {
+  const busy = task.pending !== null;
+  return {
+    busy,
+    canClaim: !busy && task.event.state === 'due' && task.event.claimed_by === null,
+    canConfirm: !busy,
+    claimedBy: task.event.claimed_by_name,
+    overdue: task.overdueMs >= 0,
+    waitMs: Math.abs(task.overdueMs),
+  };
+}
