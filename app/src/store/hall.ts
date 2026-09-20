@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 import { claimEvent, confirmEvent } from '../api/endpoints';
-import { NetworkError } from '../api/errors';
+import { explain, NetworkError } from '../api/errors';
 import type { HallState, ServiceEvent } from '../api/types';
 import { serverNow } from '../ws/clock';
 import type { ParsedMessage } from '../ws/envelope';
@@ -15,7 +15,7 @@ export type Actor = { id: string; name: string };
 
 // ActResult tells the screen what to say. 'sent' needs no message at all:
 // the store already painted the result.
-export type ActResult = 'sent' | 'queued' | 'rejected';
+export type ActResult = { status: 'sent' | 'queued' } | { status: 'rejected'; message: string };
 
 type HallStore = HallData & {
   connection: Connection;
@@ -138,16 +138,16 @@ export const useHallStore = create<HallStore>((set, get) => {
         queue.drop(eventId);
         setPending(eventId, found ? { action: kind, hookahId: found.hookahId, event, since: serverNow() } : null);
         set({ queued: queue.size() });
-        return 'sent';
+        return { status: 'sent' };
       } catch (e) {
         if (e instanceof NetworkError) {
           queue.push(kind, eventId, serverNow());
           set({ queued: queue.size() });
-          return 'queued';
+          return { status: 'queued' };
         }
         // The server answered no: drop the guess and let its state stand.
         setPending(eventId, null);
-        return 'rejected';
+        return { status: 'rejected', message: explain(e) };
       }
     },
   };

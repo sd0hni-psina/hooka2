@@ -1,9 +1,10 @@
-import type { ReactNode } from 'react';
-import { Pressable as RNPressable, type AccessibilityRole, type StyleProp, type ViewStyle } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import { useState, type ReactNode } from 'react';
+import {
+  Animated, Pressable as RNPressable, type AccessibilityRole, type StyleProp, type ViewStyle,
+} from 'react-native';
 
 import { feel, type Feel } from './haptics';
-import { pressScale, spring, timing } from './motion';
+import { duration, pressScale } from './motion';
 
 type Props = {
   children: ReactNode;
@@ -21,13 +22,17 @@ type Props = {
 
 // Touch is the whole interface here: the master looks at the hall, not at the
 // screen. Every pressable answers with a scale and a tap in the hand,
-// tech.md section 19.15.
+// tech.md section 19.15. The scale runs on the native driver, so a busy hall
+// never makes a button feel late.
 export function Pressable({
   children, onPress, onLongPress, disabled, style, accessibilityRole = 'button',
   accessibilityLabel, accessibilityState, haptic = 'tap', hitSlop,
 }: Props) {
-  const scale = useSharedValue(1);
-  const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  // useState holds the value: a ref may not be read while rendering.
+  const [scale] = useState(() => new Animated.Value(1));
+
+  const squeeze = (to: number, ms: number) =>
+    Animated.timing(scale, { toValue: to, duration: ms, useNativeDriver: true }).start();
 
   return (
     <RNPressable
@@ -36,12 +41,8 @@ export function Pressable({
       accessibilityState={accessibilityState ?? { disabled: !!disabled }}
       disabled={disabled}
       hitSlop={hitSlop}
-      onPressIn={() => {
-        scale.value = withTiming(pressScale, timing.fast);
-      }}
-      onPressOut={() => {
-        scale.value = withSpring(1, spring);
-      }}
+      onPressIn={() => squeeze(pressScale, duration.fast)}
+      onPressOut={() => squeeze(1, duration.base)}
       onPress={() => {
         if (haptic !== 'none') feel(haptic);
         onPress?.();
@@ -51,7 +52,7 @@ export function Pressable({
         onLongPress();
       } : undefined}
     >
-      <Animated.View style={[style, animated]}>{children}</Animated.View>
+      <Animated.View style={[style, { transform: [{ scale }] }]}>{children}</Animated.View>
     </RNPressable>
   );
 }

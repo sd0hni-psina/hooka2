@@ -7,13 +7,13 @@ import type { Table, TableStatus } from '../../src/api/types';
 import {
   applyPreset, clampPosition, GRID, overlappingIds, placementOf, presetOf, resize, type ShapePreset,
 } from '../../src/domain/layout';
-import { describeError, type FieldErrors } from '../../src/features/join/form';
+import { describeError, explain, type FieldErrors } from '../../src/api/errors';
 import { t } from '../../src/i18n/ru';
 import { useAuthStore } from '../../src/store/auth';
 import { useHallStore } from '../../src/store/hall';
 import {
   AppBar, Badge, Button, ConfirmDialog, EmptyState, HallCanvas, IconButton, Input, NumberField, Screen,
-  SegmentedControl, Sheet, Text, Toast,
+  SegmentedControl, Sheet, Text, toast,
 } from '../../src/ui';
 import { space } from '../../src/ui/tokens';
 
@@ -29,7 +29,6 @@ export default function LayoutEditor() {
   const [moved, setMoved] = useState<Record<string, { x: number; y: number }>>({});
   const [selected, setSelected] = useState<Table | null>(null);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
   const [fields, setFields] = useState<FieldErrors>({});
   const [confirmArchive, setConfirmArchive] = useState(false);
 
@@ -49,13 +48,12 @@ export default function LayoutEditor() {
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
-    setMessage(null);
     setFields({});
     try {
       await fn();
     } catch (e) {
       const d = describeError(e);
-      setMessage(d.message ?? Object.values(d.fields)[0] ?? t.errors.unknown);
+      toast({ key: 'layout', message: explain(e), tone: 'danger' });
       setFields(d.fields);
     } finally {
       setBusy(false);
@@ -87,7 +85,6 @@ export default function LayoutEditor() {
     <Screen
       footer={
         <>
-          {message ? <Toast message={message} tone="danger" /> : null}
           <Button
             title={t.layout.save}
             variant="primary"
@@ -120,7 +117,11 @@ export default function LayoutEditor() {
       <Text variant="label" color="textMuted">
         {t.layout.hint}
       </Text>
-      {warnIds.size > 0 ? <Toast message={t.layout.overlap} tone="warning" /> : null}
+      {warnIds.size > 0 ? (
+        <Text variant="label" color="yellow">
+          {t.layout.overlap}
+        </Text>
+      ) : null}
       <HallCanvas
         fill
         tables={tables}

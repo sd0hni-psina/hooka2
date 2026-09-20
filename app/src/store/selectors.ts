@@ -3,6 +3,10 @@ import { formatShort } from '../domain/countdown';
 import { tableStatus } from '../domain/status';
 import type { HallData, Optimistic, PendingAction } from './reducer';
 
+// Selectors read only these two fields, so a screen can subscribe to them
+// alone and ignore connection or queue changes, tech.md section 19.15.
+export type HallSlice = Pick<HallData, 'state' | 'pending'>;
+
 // memo1 remembers the last call. Every screen reads the same store, so one
 // slot is enough to keep derived objects referentially stable and let
 // React.memo do its job, tech.md section 19.15.
@@ -16,7 +20,7 @@ function memo1<A extends readonly unknown[], R>(fn: (...args: A) => R): (...args
   };
 }
 
-export function selectTables(d: HallData): Table[] {
+export function selectTables(d: HallSlice): Table[] {
   return view(d)?.tables ?? [];
 }
 
@@ -42,11 +46,11 @@ const buildView = memo1((state: HallState | null, pending: Record<string, Optimi
 
 // view is the hall as the master sees it: server state with the local
 // guesses already painted on.
-export function view(d: HallData): HallState | null {
+export function view(d: HallSlice): HallState | null {
   return buildView(d.state, d.pending);
 }
 
-export const hookahByTable = memo1((d: HallData): Map<string, Hookah> => {
+export const hookahByTable = memo1((d: HallSlice): Map<string, Hookah> => {
   const m = new Map<string, Hookah>();
   for (const h of view(d)?.hookahs ?? []) m.set(h.table_id, h);
   return m;
@@ -63,7 +67,7 @@ let lastStatuses: Record<string, TableStatus> = {};
 // statusesAt recomputes colors locally between messages, so a deadline that
 // passes without an incoming event still turns the table yellow. The result
 // keeps its identity while nothing changed: an idle hall costs no re-render.
-export function statusesAt(d: HallData, nowMs: number): Record<string, TableStatus> {
+export function statusesAt(d: HallSlice, nowMs: number): Record<string, TableStatus> {
   const out: Record<string, TableStatus> = {};
   const byTable = hookahByTable(d);
   const state = view(d);
@@ -82,7 +86,7 @@ let lastLabels: Record<string, string> = {};
 // tableLabels is the line under a table number: who took the task, otherwise
 // how long the hookah has been running. Minutes, so the map holds still
 // between ticks.
-export function tableLabels(d: HallData, nowMs: number): Record<string, string> {
+export function tableLabels(d: HallSlice, nowMs: number): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [tableId, h] of hookahByTable(d)) {
     const claimed = h.events.find((e) => e.state === 'due' && e.claimed_by_name);
@@ -97,7 +101,7 @@ let lastProgress: Record<string, number> = {};
 
 // progressAt is the share of the hookah resource already burned, 0..1. The
 // ring around a table turns it into something readable in one glance.
-export function progressAt(d: HallData, nowMs: number): Record<string, number> {
+export function progressAt(d: HallSlice, nowMs: number): Record<string, number> {
   const out: Record<string, number> = {};
   for (const [tableId, h] of hookahByTable(d)) {
     const start = Date.parse(h.started_at);
@@ -122,7 +126,7 @@ export type Task = {
 
 // selectTasks lists what needs attention, most urgent first: fired tasks
 // before the ones about to fire, tech.md section 12.
-export function selectTasks(d: HallData, nowMs: number): Task[] {
+export function selectTasks(d: HallSlice, nowMs: number): Task[] {
   const state = view(d);
   const tables = new Map((state?.tables ?? []).map((t) => [t.id, t]));
   const warnMs = (state?.plan.warn_before_sec ?? 0) * 1000;
@@ -143,7 +147,7 @@ export function selectTasks(d: HallData, nowMs: number): Task[] {
 }
 
 // countTasks is what the tab badge needs, without building the list.
-export function countTasks(d: HallData, nowMs: number): { due: number; soon: number } {
+export function countTasks(d: HallSlice, nowMs: number): { due: number; soon: number } {
   let due = 0;
   let soon = 0;
   for (const task of selectTasks(d, nowMs)) {

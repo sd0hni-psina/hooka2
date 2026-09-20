@@ -4,11 +4,11 @@ import { View } from 'react-native';
 
 import { getStaff, patchStaff, rotateCode } from '../../src/api/endpoints';
 import type { Staff } from '../../src/api/types';
-import { describeError } from '../../src/features/join/form';
+import { explain } from '../../src/api/errors';
 import { t } from '../../src/i18n/ru';
 import { useAuthStore } from '../../src/store/auth';
 import {
-  AppBar, Badge, Button, Card, ConfirmDialog, EmptyState, IconButton, ListRow, Screen, Spinner, Text, Toast,
+  AppBar, Badge, Button, Card, ConfirmDialog, EmptyState, IconButton, ListRow, Screen, Spinner, Text, toast,
 } from '../../src/ui';
 
 export default function StaffScreen() {
@@ -16,18 +16,16 @@ export default function StaffScreen() {
   const me = useAuthStore((s) => s.me);
   const [list, setList] = useState<Staff[] | null>(null);
   const [code, setCode] = useState<string | null>(me?.venue.join_code ?? null);
-  const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmBlock, setConfirmBlock] = useState<Staff | null>(null);
   const [confirmRotate, setConfirmRotate] = useState(false);
 
   const run = useCallback(async (fn: () => Promise<unknown>) => {
     setBusy(true);
-    setMessage(null);
     try {
       await fn();
     } catch (e) {
-      setMessage(describeError(e).message ?? t.errors.unknown);
+      toast({ key: 'staff', message: explain(e), tone: 'danger' });
     } finally {
       setBusy(false);
     }
@@ -39,7 +37,7 @@ export default function StaffScreen() {
     try {
       setList(await getStaff());
     } catch (e) {
-      setMessage(describeError(e).message ?? t.errors.unknown);
+      toast({ key: 'staff', message: explain(e), tone: 'danger' });
     }
   }, []);
 
@@ -47,7 +45,7 @@ export default function StaffScreen() {
     // State is set from the promise callback, never in the effect body.
     getStaff()
       .then(setList)
-      .catch((e: unknown) => setMessage(describeError(e).message ?? t.errors.unknown));
+      .catch((e: unknown) => toast({ key: 'staff', message: explain(e), tone: 'danger' }));
   }, []);
 
   const isOwner = me?.staff.role === 'owner';
@@ -60,7 +58,6 @@ export default function StaffScreen() {
         left={<IconButton icon="chevron-left" accessibilityLabel={t.ui.close} onPress={() => router.back()} />}
         right={<IconButton icon="refresh" accessibilityLabel={t.ui.retry} onPress={() => void reload()} />}
       />
-      {message ? <Toast message={message} tone="danger" /> : null}
 
       <Card>
         <Text variant="h2">{code ? t.staff.code(code) : t.staff.title}</Text>
@@ -77,7 +74,7 @@ export default function StaffScreen() {
             <ListRow
               key={person.id}
               title={person.display_name}
-              subtitle={t.staff.role[person.role]}
+              subtitle={t.roles[person.role]}
               right={
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   {person.blocked ? <Badge title={t.staff.blocked} tone="red" icon="alert" /> : null}

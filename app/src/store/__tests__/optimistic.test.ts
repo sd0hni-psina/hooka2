@@ -1,4 +1,5 @@
 import fixture from '../../../../contracts/fixtures/ws_events.json';
+import { claimEvent, confirmEvent } from '../../api/endpoints';
 import { ApiError, NetworkError } from '../../api/errors';
 import type { Envelope, ServiceEvent } from '../../api/types';
 import { __setLocalClockForTests } from '../../ws/clock';
@@ -10,8 +11,6 @@ jest.mock('../../api/endpoints', () => ({
   claimEvent: jest.fn(),
   confirmEvent: jest.fn(),
 }));
-
-import { claimEvent, confirmEvent } from '../../api/endpoints';
 
 const mockClaim = claimEvent as jest.MockedFunction<typeof claimEvent>;
 const mockConfirm = confirmEvent as jest.MockedFunction<typeof confirmEvent>;
@@ -57,7 +56,7 @@ describe('optimistic claim and confirm', () => {
     expect(shown(event.id).state).toBe('confirmed');
     expect(shown(event.id).confirmed_by_name).toBe('Ерлан');
     release({ ...event, state: 'confirmed', confirmed_by: 'staff-me', confirmed_by_name: 'Ерлан из ответа' });
-    await expect(inflight).resolves.toBe('sent');
+    await expect(inflight).resolves.toEqual({ status: 'sent' });
     expect(shown(event.id).confirmed_by_name).toBe('Ерлан из ответа');
   });
 
@@ -76,7 +75,7 @@ describe('optimistic claim and confirm', () => {
     const event = firstEvent();
     mockClaim.mockRejectedValue(new ApiError('event_not_actionable', 409, 'занято', null));
 
-    await expect(useHallStore.getState().act('claim', event.id, actor)).resolves.toBe('rejected');
+    await expect(useHallStore.getState().act('claim', event.id, actor)).resolves.toMatchObject({ status: 'rejected' });
     expect(shown(event.id).claimed_by_name).toBe(event.claimed_by_name);
     expect(useHallStore.getState().pending).toEqual({});
   });
@@ -85,7 +84,7 @@ describe('optimistic claim and confirm', () => {
     const event = firstEvent();
     mockConfirm.mockRejectedValue(new NetworkError(new Error('offline')));
 
-    await expect(useHallStore.getState().act('confirm', event.id, actor)).resolves.toBe('queued');
+    await expect(useHallStore.getState().act('confirm', event.id, actor)).resolves.toEqual({ status: 'queued' });
     expect(shown(event.id).state).toBe('confirmed');
     expect(useHallStore.getState().queued).toBe(1);
   });

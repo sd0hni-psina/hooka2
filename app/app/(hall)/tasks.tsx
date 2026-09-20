@@ -1,66 +1,72 @@
 import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { SectionList, StyleSheet, View } from 'react-native';
 
-import { claimEvent, confirmEvent } from '../../src/api/endpoints';
-import { formatDuration } from '../../src/domain/countdown';
+import { TaskRow } from '../../src/features/tasks/TaskRow';
+import { useTaskActions } from '../../src/features/tasks/useTaskActions';
 import { t } from '../../src/i18n/ru';
 import { useHallStore } from '../../src/store/hall';
-import { selectTasks } from '../../src/store/selectors';
-import { AppBar, Badge, EmptyState, IconButton, ListRow, Screen, useServerNow } from '../../src/ui';
+import { selectTasks, type Task } from '../../src/store/selectors';
+import { AppBar, Badge, EmptyState, Screen, Text, useServerNow } from '../../src/ui';
 import { space } from '../../src/ui/tokens';
 
 // The tasks screen is for a master in motion: the most urgent task on top.
 export default function TasksScreen() {
   const router = useRouter();
-  const data = useHallStore((s) => s);
+  const state = useHallStore((s) => s.state);
+  const pending = useHallStore((s) => s.pending);
   const now = useServerNow();
+  const actions = useTaskActions();
+
+  const data = useMemo(() => ({ state, pending }), [state, pending]);
   const tasks = useMemo(() => selectTasks(data, now), [data, now]);
 
+  const sections = useMemo(() => {
+    const overdue = tasks.filter((task) => task.overdueMs >= 0);
+    const soon = tasks.filter((task) => task.overdueMs < 0);
+    return [
+      { title: t.tasks.groupOverdue, tone: 'red' as const, data: overdue },
+      { title: t.tasks.groupSoon, tone: 'yellow' as const, data: soon },
+    ].filter((s) => s.data.length > 0);
+  }, [tasks]);
+
   return (
-    <Screen scroll>
-      <AppBar title={t.tasks.title} subtitle={data.state?.hall.name} />
+    <Screen>
+      <AppBar title={t.tasks.title} subtitle={state?.hall.name} />
       {tasks.length === 0 ? (
         <EmptyState icon="list" title={t.tasks.empty} message={t.tasks.emptyHint} />
       ) : (
-        <View>
-          {tasks.map((task) => (
-            <ListRow
-              key={task.event.id}
-              title={`${t.table.title(task.table.label)}: ${task.event.title}`}
-              subtitle={task.event.claimed_by_name ? t.tasks.claimedBy(task.event.claimed_by_name) : undefined}
-              right={
-                <View style={styles.actions}>
-                  <Badge
-                    title={`${task.overdueMs >= 0 ? t.tasks.overdue : t.tasks.soon} ${formatDuration(Math.abs(task.overdueMs))}`}
-                    tone={task.overdueMs >= 0 ? 'red' : 'yellow'}
-                    icon="clock"
-                  />
-                  {task.event.state === 'due' && !task.event.claimed_by ? (
-                    <IconButton
-                      icon="hand"
-                      variant="filled"
-                      accessibilityLabel={t.tasks.claim}
-                      onPress={() => void claimEvent(task.event.id).catch(() => undefined)}
-                    />
-                  ) : null}
-                  <IconButton
-                    icon="check"
-                    variant="filled"
-                    accessibilityLabel={t.tasks.confirm}
-                    onPress={() => void confirmEvent(task.event.id).catch(() => undefined)}
-                  />
-                </View>
-              }
-              onPress={() => router.push({ pathname: '/table/[id]', params: { id: task.table.id } })}
+        <SectionList<Task, { title: string; tone: 'red' | 'yellow' }>
+          sections={sections}
+          keyExtractor={(task) => task.event.id}
+          stickySectionHeadersEnabled={false}
+          initialNumToRender={10}
+          windowSize={7}
+          contentContainerStyle={styles.list}
+          renderSectionHeader={({ section }) => (
+            <View style={styles.header}>
+              <Text variant="label" color="textMuted">
+                {section.title}
+              </Text>
+              <Badge title={String(section.data.length)} tone={section.tone} />
+            </View>
+          )}
+          renderItem={({ item }) => (
+            <TaskRow
+              task={item}
+              variant="row"
+              onOpen={() => router.push({ pathname: '/table/[id]', params: { id: item.table.id } })}
+              onClaim={() => actions.claim(item.event.id)}
+              onConfirm={() => actions.confirm(item.event.id)}
             />
-          ))}
-        </View>
+          )}
+        />
       )}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  actions: { flexDirection: 'row', alignItems: 'center', gap: space[2] },
+  list: { paddingBottom: space[5] },
+  header: { flexDirection: 'row', alignItems: 'center', gap: space[2], paddingTop: space[4], paddingBottom: space[2] },
 });

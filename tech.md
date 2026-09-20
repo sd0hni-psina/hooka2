@@ -1576,4 +1576,4 @@ export const elevation = { sheet: ..., dialog: ..., toast: ... };
 - `app/(hall)/tasks.tsx` — задачи по срочности, действия прямо в строке, группировка «просрочено» и «скоро».
 - Полоса задач на главном экране и экран задач собираются из одного компонента `src/features/tasks/TaskRow.tsx`.
 
-**Что убрано.** Экран `kitchen-sink` остаётся только в dev-сборке через `app/(dev)/`. Неиспользуемые строки `t.hall.seq`, `t.me.*`, `t.join.continue`, `t.ui.retry` удалены, роли живут одной таблицей `t.roles`. Селектор `hookahById` удалён, `describeError` переехал из `src/features/join/form.ts` в `src/api/errors.ts`: разбор ответа API не относится к фиче входа.
+**Что убрано.** Экран `kitchen-sink` закрыт проверкой `__DEV__` и в релизе перенаправляет на главный. Неиспользуемые строки `t.hall.seq`, `t.me.*`, `t.join.continue`, `t.ui.retry` удалены, роли живут одной таблицей `t.roles`. Селектор `hookahById` удалён, `describeError` переехал из `src/features/join/form.ts` в `src/api/errors.ts`: разбор ответа API не относится к фиче входа.

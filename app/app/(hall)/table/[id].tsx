@@ -4,15 +4,16 @@ import { StyleSheet, View } from 'react-native';
 
 import * as Crypto from 'expo-crypto';
 
-import { claimEvent, confirmEvent, finishHookah, startHookah, transferHookah } from '../../../src/api/endpoints';
+import { finishHookah, startHookah, transferHookah } from '../../../src/api/endpoints';
+import { explain } from '../../../src/api/errors';
 import type { FinishReason, ServiceEvent } from '../../../src/api/types';
-import { describeError } from '../../../src/features/join/form';
+import { useTaskActions } from '../../../src/features/tasks/useTaskActions';
 import { t } from '../../../src/i18n/ru';
 import { useHallStore } from '../../../src/store/hall';
-import { hookahByTable, statusesAt } from '../../../src/store/selectors';
+import { hookahByTable, progressAt, statusesAt } from '../../../src/store/selectors';
 import {
-  AppBar, Badge, Button, Card, ConfirmDialog, Countdown, EmptyState, IconButton, ListRow, Screen,
-  Sheet, Text, Toast, statusStyle, useServerNow,
+  AppBar, Badge, Button, Card, ConfirmDialog, Countdown, EmptyState, Icon, IconButton, ListRow, ProgressRing,
+  Screen, Sheet, Spinner, Stat, Text, statusStyle, toast, useServerNow,
 } from '../../../src/ui';
 import { space } from '../../../src/ui/tokens';
 
@@ -20,11 +21,13 @@ const reasons: FinishReason[] = ['guest_left', 'replaced', 'mistake', 'shift_end
 
 type EventRowProps = {
   event: ServiceEvent;
+  pending: boolean;
+  disabled: boolean;
   onClaim: () => void;
   onConfirm: () => void;
 };
 
-function EventRow({ event, onClaim, onConfirm }: EventRowProps) {
+function EventRow({ event, pending, disabled, onClaim, onConfirm }: EventRowProps) {
   const open = event.state === 'due' || event.state === 'pending';
   const who = event.claimed_by_name
     ? t.tasks.claimedBy(event.claimed_by_name)
@@ -35,14 +38,28 @@ function EventRow({ event, onClaim, onConfirm }: EventRowProps) {
     <ListRow
       title={event.title}
       subtitle={who}
+      left={
+        <Icon
+          name={event.state === 'confirmed' ? 'check' : event.state === 'due' ? 'alert' : 'clock'}
+          color={event.state === 'confirmed' ? 'green' : event.state === 'due' ? 'yellow' : 'textMuted'}
+        />
+      }
       right={
         <View style={styles.actions}>
-          {open ? <Countdown target={event.due_at} mode={event.state === 'due' ? 'up' : 'down'} /> : null}
-          {event.state === 'due' && !event.claimed_by ? (
-            <IconButton icon="hand" variant="filled" accessibilityLabel={t.tasks.claim} onPress={onClaim} />
+          {open ? <Countdown target={event.due_at} mode={event.state === 'due' ? 'up' : 'down'} variant="label" /> : null}
+          {pending ? <Spinner /> : null}
+          {!pending && open && event.state === 'due' && !event.claimed_by ? (
+            <IconButton icon="hand" variant="filled" accessibilityLabel={t.tasks.claim} disabled={disabled} onPress={onClaim} haptic="select" />
           ) : null}
-          {open ? <IconButton icon="check" variant="filled" accessibilityLabel={t.tasks.confirm} onPress={onConfirm} /> : null}
-          {!open ? <Badge title={t.table.eventState[event.state]} tone={event.state === 'confirmed' ? 'green' : 'neutral'} /> : null}
+          {!pending && open ? (
+            <IconButton icon="check" variant="accent" accessibilityLabel={t.tasks.confirm} disabled={disabled} onPress={onConfirm} haptic="success" />
+          ) : null}
+          {!open ? (
+            <Badge
+              title={event.confirmed_early ? t.table.early : t.table.eventState[event.state]}
+              tone={event.state === 'confirmed' ? 'green' : 'neutral'}
+            />
+          ) : null}
         </View>
       }
     />
@@ -52,15 +69,20 @@ function EventRow({ event, onClaim, onConfirm }: EventRowProps) {
 export default function TableScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const data = useHallStore((s) => s);
+  const state = useHallStore((s) => s.state);
+  const pending = useHallStore((s) => s.pending);
+  const connection = useHallStore((s) => s.connection);
+  const stale = useHallStore((s) => s.stale);
   const now = useServerNow();
-  const offline = data.connection !== 'online';
+  const actions = useTaskActions();
+  const frozen = connection !== 'online' || stale;
 
-  const table = data.state?.tables.find((x) => x.id === id) ?? null;
+  const data = useMemo(() => ({ state, pending }), [state, pending]);
+  const table = state?.tables.find((x) => x.id === id) ?? null;
   const hookah = useMemo(() => (id ? (hookahByTable(data).get(id) ?? null) : null), [data, id]);
   const status = statusesAt(data, now)[id ?? ''] ?? 'free';
+  const progress = progressAt(data, now)[id ?? ''] ?? 0;
 
-  const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmStart, setConfirmStart] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
@@ -69,18 +91,16 @@ export default function TableScreen() {
 
   const freeTables = useMemo(() => {
     const busyTables = hookahByTable(data);
-    return (data.state?.tables ?? []).filter((x) => x.id !== id && !busyTables.has(x.id));
-  }, [data, id]);
+    return (state?.tables ?? []).filter((x) => x.id !== id && !busyTables.has(x.id));
+  }, [data, state, id]);
 
   const run = async (fn: () => Promise<unknown>, after?: () => void) => {
     setBusy(true);
-    setMessage(null);
     try {
       await fn();
       after?.();
     } catch (e) {
-      const d = describeError(e);
-      setMessage(d.message ?? Object.values(d.fields)[0] ?? t.errors.unknown);
+      toast({ key: 'table', message: explain(e), tone: 'danger' });
     } finally {
       setBusy(false);
     }
@@ -101,23 +121,17 @@ export default function TableScreen() {
       footer={
         hookah ? (
           <>
-            {offline ? <Toast message={t.hall.offline} tone="danger" /> : null}
-            {message ? <Toast message={message} tone="danger" /> : null}
-            <Button title={t.table.transfer} variant="secondary" size="lg" icon="swap" loading={busy} disabled={offline} onPress={() => setShowTransfer(true)} />
-            <Button title={t.table.finish} variant="danger" size="md" icon="stop" loading={busy} disabled={offline} onPress={() => setShowFinish(true)} />
+            <Button title={t.table.transfer} variant="secondary" size="lg" icon="swap" loading={busy} disabled={frozen} onPress={() => setShowTransfer(true)} />
+            <Button title={t.table.finish} variant="danger" size="md" icon="stop" loading={busy} disabled={frozen} onPress={() => setShowFinish(true)} />
           </>
         ) : (
-          <>
-            {offline ? <Toast message={t.hall.offline} tone="danger" /> : null}
-            {message ? <Toast message={message} tone="danger" /> : null}
-            <Button title={t.table.start} variant="primary" size="lg" icon="flame" loading={busy} disabled={offline} onPress={() => setConfirmStart(true)} />
-          </>
+          <Button title={t.table.start} variant="primary" size="lg" icon="flame" loading={busy} disabled={frozen} onPress={() => setConfirmStart(true)} />
         )
       }
     >
       <AppBar
         title={t.table.title(table.label)}
-        subtitle={statusStyle[status].label}
+        subtitle={t.table.seats(table.seats)}
         left={<IconButton icon="chevron-left" accessibilityLabel={t.ui.close} onPress={() => router.back()} />}
         right={<Badge title={statusStyle[status].label} tone={status === 'free' ? 'neutral' : status} icon={statusStyle[status].icon} />}
       />
@@ -125,18 +139,21 @@ export default function TableScreen() {
       {hookah ? (
         <>
           <Card status={status}>
-            <Text variant="label" color="textMuted">
-              {t.table.elapsed}
-            </Text>
-            <Countdown target={hookah.started_at} mode="up" status={status} />
-            <Text variant="label" color="textMuted">
-              {t.table.leftToExpire}
-            </Text>
-            <Countdown target={hookah.expires_at} mode="down" />
-            <Text variant="label" color="textMuted">
-              {hookah.started_by_name}
-            </Text>
+            <View style={styles.hero}>
+              <ProgressRing progress={progress} status={status} size={132} thickness={8}>
+                <Countdown target={hookah.started_at} mode="up" status={status} variant="mono" />
+                <Text variant="label" color="textMuted">
+                  {t.table.elapsed}
+                </Text>
+              </ProgressRing>
+              <View style={styles.stats}>
+                <Stat label={t.table.leftToExpire} hint={t.table.startedBy(hookah.started_by_name)}>
+                  <Countdown target={hookah.expires_at} mode="down" variant="mono" />
+                </Stat>
+              </View>
+            </View>
           </Card>
+
           <Text variant="label" color="textMuted">
             {t.table.events}
           </Text>
@@ -147,8 +164,10 @@ export default function TableScreen() {
                 <EventRow
                   key={e.id}
                   event={e}
-                  onClaim={() => void run(() => claimEvent(e.id))}
-                  onConfirm={() => void run(() => confirmEvent(e.id))}
+                  pending={pending[e.id] !== undefined}
+                  disabled={frozen}
+                  onClaim={() => actions.claim(e.id)}
+                  onConfirm={() => actions.confirm(e.id)}
                 />
               ))}
           </View>
@@ -180,6 +199,8 @@ export default function TableScreen() {
             <ListRow
               key={x.id}
               title={t.table.title(x.label)}
+              subtitle={t.table.seats(x.seats)}
+              right={<Icon name="chevron-right" color="textMuted" />}
               onPress={() => {
                 setShowTransfer(false);
                 if (!hookah) return;
@@ -219,7 +240,8 @@ export default function TableScreen() {
             <ListRow
               key={r}
               title={t.table.reason[r]}
-              right={r === reason ? <Badge title={t.table.eventState.confirmed} tone="green" icon="check" /> : undefined}
+              selected={r === reason}
+              right={r === reason ? <Icon name="check" color="green" /> : undefined}
               onPress={() => setReason(r)}
             />
           ))}
@@ -230,6 +252,8 @@ export default function TableScreen() {
 }
 
 const styles = StyleSheet.create({
+  hero: { flexDirection: 'row', alignItems: 'center', gap: space[4] },
+  stats: { flex: 1, gap: space[1] },
   reasons: { gap: space[1] },
   actions: { flexDirection: 'row', alignItems: 'center', gap: space[2] },
 });

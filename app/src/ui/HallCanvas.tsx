@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
@@ -83,32 +83,29 @@ export function HallCanvas({
   const offsetY = (size.h - box.h * unit) / 2;
   const toGrid = (px: number, py: number) => ({ x: box.x + (px - offsetX) / unit, y: box.y + (py - offsetY) / unit });
 
-  const reset = useCallback(() => {
+  const reset = () => {
+    'worklet';
     scale.value = withSpring(1, spring);
     savedScale.value = 1;
     tx.value = withSpring(0, spring);
     ty.value = withSpring(0, spring);
     savedX.value = 0;
     savedY.value = 0;
-  }, [savedScale, savedX, savedY, scale, tx, ty]);
+  };
 
-  // Focus centers one table and zooms in on it. The transform applies around
-  // the view centre, so the offset is the scaled distance to it.
-  useEffect(() => {
-    if (unit <= 0 || editable) return;
+  // Focus centers one table and zooms in on it. It is declarative on
+  // purpose: the transform reads the target straight off the props, so the
+  // canvas never writes a shared value outside a gesture.
+  const focus = useMemo(() => {
+    if (unit <= 0 || editable) return null;
     const table = focusId ? tables.find((t) => t.id === focusId) : null;
-    if (!table) return;
+    if (!table) return null;
     const px = offsetX + (table.x + table.w / 2 - box.x) * unit;
     const py = offsetY + (table.y + table.h / 2 - box.y) * unit;
-    const next = { x: -FOCUS_ZOOM * (px - size.w / 2), y: -FOCUS_ZOOM * (py - size.h / 2) };
-    scale.value = withTiming(FOCUS_ZOOM, timing.slow);
-    tx.value = withTiming(next.x, timing.slow);
-    ty.value = withTiming(next.y, timing.slow);
-    savedScale.value = FOCUS_ZOOM;
-    savedX.value = next.x;
-    savedY.value = next.y;
-    // box and offsets derive from tables and size, which are in the list.
-  }, [focusId, tables, unit, size.w, size.h, offsetX, offsetY, box.x, box.y, editable, scale, tx, ty, savedScale, savedX, savedY]);
+    // The transform applies around the view centre, so the offset is the
+    // scaled distance from the table to it.
+    return { x: -FOCUS_ZOOM * (px - size.w / 2), y: -FOCUS_ZOOM * (py - size.h / 2) };
+  }, [focusId, tables, unit, editable, offsetX, offsetY, box.x, box.y, size.w, size.h]);
 
   // In edit mode the pan gesture drags a table instead of the canvas, so the
   // finger stays on the table it grabbed.
@@ -153,13 +150,23 @@ export function HallCanvas({
   const doubleTap = Gesture.Tap()
     .enabled(!editable)
     .numberOfTaps(2)
-    .runOnJS(true)
     .onEnd(reset);
 
-  const animated = useAnimatedStyle(() => ({
-    flex: 1,
-    transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: scale.value }],
-  }));
+  const animated = useAnimatedStyle(() =>
+    focus
+      ? {
+          flex: 1,
+          transform: [
+            { translateX: withTiming(focus.x, timing.slow) },
+            { translateY: withTiming(focus.y, timing.slow) },
+            { scale: withTiming(FOCUS_ZOOM, timing.slow) },
+          ],
+        }
+      : {
+          flex: 1,
+          transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: scale.value }],
+        },
+  );
 
   const onLayout = (e: LayoutChangeEvent) =>
     setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height });
