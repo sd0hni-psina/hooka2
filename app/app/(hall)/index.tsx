@@ -13,7 +13,8 @@ import { useAuthStore } from '../../src/store/auth';
 import { useHallStore } from '../../src/store/hall';
 import { hookahByTable, selectTasks, statusesAt } from '../../src/store/selectors';
 import {
-  AppBar, Badge, Card, ConfirmDialog, EmptyState, HallCanvas, IconButton, Screen, Spinner, Text, Toast, useServerNow,
+  AppBar, Badge, Card, ConfirmDialog, EmptyState, HallCanvas, IconButton, ListRow, Screen, Sheet, Spinner, Text,
+  Toast, useServerNow,
 } from '../../src/ui';
 import { space } from '../../src/ui/tokens';
 
@@ -31,6 +32,9 @@ export default function HallScreen() {
   const now = useServerNow();
   const [pending, setPending] = useState<{ table: Table; key: string } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [showHalls, setShowHalls] = useState(false);
+  // v1 has no offline queue, so mutations wait for the socket, tech.md section 19.11.
+  const offline = data.connection !== 'online';
 
   const statuses = useMemo(() => statusesAt(data, now), [data, now]);
   const byTable = useMemo(() => hookahByTable(data), [data]);
@@ -46,6 +50,7 @@ export default function HallScreen() {
   }, [byTable, now]);
 
   const openTable = (table: Table) => {
+    if (offline) return;
     const hookah = byTable.get(table.id);
     if (hookah) {
       router.push({ pathname: '/table/[id]', params: { id: table.id } });
@@ -76,10 +81,18 @@ export default function HallScreen() {
         title={hall?.name ?? t.appName}
         subtitle={me?.venue.name}
         left={<ConnectionBadge />}
-        right={manager ? <IconButton icon="settings" accessibilityLabel={t.settings.title} onPress={() => router.push('/settings')} /> : undefined}
+        right={
+          <View style={styles.bar}>
+            {(me?.halls.length ?? 0) > 1 ? (
+              <IconButton icon="grid" accessibilityLabel={t.hall.switch} onPress={() => setShowHalls(true)} />
+            ) : null}
+            {manager ? <IconButton icon="settings" accessibilityLabel={t.settings.title} onPress={() => router.push('/settings')} /> : null}
+          </View>
+        }
       />
+      {offline ? <Toast message={t.hall.offline} tone="danger" /> : null}
       {message ? <Toast message={message} tone="danger" /> : null}
-      {data.banner ? (
+      {data.banner && !offline ? (
         <Toast
           message={t.tasks.banner(data.banner.tableLabel, data.banner.title)}
           tone="warning"
@@ -130,6 +143,20 @@ export default function HallScreen() {
         </View>
       )}
 
+      <Sheet visible={showHalls} onClose={() => setShowHalls(false)} title={t.hall.switch}>
+        {(me?.halls ?? []).map((h) => (
+          <ListRow
+            key={h.id}
+            title={h.name}
+            right={h.id === data.hallId ? <Badge title={t.hall.online} tone="green" icon="check" /> : undefined}
+            onPress={() => {
+              setShowHalls(false);
+              void useAuthStore.getState().selectHall(h.id);
+            }}
+          />
+        ))}
+      </Sheet>
+
       <ConfirmDialog
         visible={pending !== null}
         title={t.table.startConfirm}
@@ -143,6 +170,7 @@ export default function HallScreen() {
 }
 
 const styles = StyleSheet.create({
+  bar: { flexDirection: 'row', alignItems: 'center' },
   strip: { gap: space[2] },
   stripRow: { gap: space[3], paddingRight: space[4] },
   taskCard: { width: 220 },
