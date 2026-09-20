@@ -1,16 +1,18 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import Svg, { Rect } from 'react-native-svg';
 
 import type { Table, TableStatus } from '../api/types';
 import { clampPosition, GRID } from '../domain/layout';
+import { spring, timing } from './motion';
 import { TableShape } from './TableShape';
 import { color, radius, space } from './tokens';
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
+const FOCUS_ZOOM = 2.4;
 // Breathing room around the tables, in grid units.
 const PADDING = 4;
 
@@ -18,11 +20,20 @@ type Props = {
   tables: Table[];
   statuses: Record<string, TableStatus>;
   onTablePress: (table: Table) => void;
+  onTableLongPress?: (table: Table) => void;
   editable?: boolean;
   onTableMove?: (tableId: string, x: number, y: number) => void;
-  badges?: Record<string, string>;
+  // labels is the line under each table number, minute granularity.
+  labels?: Record<string, string>;
+  // progress is the burned share of each hookah resource, 0..1.
+  progress?: Record<string, number>;
   warnIds?: Set<string>;
+  urgentIds?: Set<string>;
+  // dimIds pushes back the tables a search filtered out.
+  dimIds?: Set<string>;
   selectedId?: string | null;
+  // focusId makes the canvas fly to one table and zoom in on it.
+  focusId?: string | null;
   // fill lets the canvas take all the space its parent gives it instead of
   // staying a square.
   fill?: boolean;
@@ -50,7 +61,8 @@ function visibleBox(tables: Table[], editable: boolean): Box {
 }
 
 export function HallCanvas({
-  tables, statuses, onTablePress, editable, onTableMove, badges, warnIds, selectedId, fill,
+  tables, statuses, onTablePress, onTableLongPress, editable, onTableMove, labels, progress,
+  warnIds, urgentIds, dimIds, selectedId, focusId, fill,
 }: Props) {
   const [size, setSize] = useState({ w: 0, h: 0 });
   // The grabbed table and where it stood when the finger landed. Gesture
@@ -70,6 +82,30 @@ export function HallCanvas({
   const offsetX = (size.w - box.w * unit) / 2;
   const offsetY = (size.h - box.h * unit) / 2;
   const toGrid = (px: number, py: number) => ({ x: box.x + (px - offsetX) / unit, y: box.y + (py - offsetY) / unit });
+
+  const reset = () => {
+    'worklet';
+    scale.value = withSpring(1, spring);
+    savedScale.value = 1;
+    tx.value = withSpring(0, spring);
+    ty.value = withSpring(0, spring);
+    savedX.value = 0;
+    savedY.value = 0;
+  };
+
+  // Focus centers one table and zooms in on it. It is declarative on
+  // purpose: the transform reads the target straight off the props, so the
+  // canvas never writes a shared value outside a gesture.
+  const focus = useMemo(() => {
+    if (unit <= 0 || editable) return null;
+    const table = focusId ? tables.find((t) => t.id === focusId) : null;
+    if (!table) return null;
+    const px = offsetX + (table.x + table.w / 2 - box.x) * unit;
+    const py = offsetY + (table.y + table.h / 2 - box.y) * unit;
+    // The transform applies around the view centre, so the offset is the
+    // scaled distance from the table to it.
+    return { x: -FOCUS_ZOOM * (px - size.w / 2), y: -FOCUS_ZOOM * (py - size.h / 2) };
+  }, [focusId, tables, unit, editable, offsetX, offsetY, box.x, box.y, size.w, size.h]);
 
   // In edit mode the pan gesture drags a table instead of the canvas, so the
   // finger stays on the table it grabbed.
@@ -111,29 +147,33 @@ export function HallCanvas({
       savedX.value = tx.value;
       savedY.value = ty.value;
     });
-  const reset = Gesture.Tap()
+  const doubleTap = Gesture.Tap()
     .enabled(!editable)
     .numberOfTaps(2)
-    .onEnd(() => {
-      scale.value = 1;
-      savedScale.value = 1;
-      tx.value = 0;
-      ty.value = 0;
-      savedX.value = 0;
-      savedY.value = 0;
-    });
+    .onEnd(reset);
 
-  const animated = useAnimatedStyle(() => ({
-    flex: 1,
-    transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: scale.value }],
-  }));
+  const animated = useAnimatedStyle(() =>
+    focus
+      ? {
+          flex: 1,
+          transform: [
+            { translateX: withTiming(focus.x, timing.slow) },
+            { translateY: withTiming(focus.y, timing.slow) },
+            { scale: withTiming(FOCUS_ZOOM, timing.slow) },
+          ],
+        }
+      : {
+          flex: 1,
+          transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: scale.value }],
+        },
+  );
 
   const onLayout = (e: LayoutChangeEvent) =>
     setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height });
 
   return (
     <View style={[styles.frame, fill ? styles.fill : styles.square]} onLayout={onLayout}>
-      <GestureDetector gesture={Gesture.Simultaneous(drag, pinch, pan, reset)}>
+      <GestureDetector gesture={Gesture.Simultaneous(drag, pinch, pan, doubleTap)}>
         <Animated.View style={animated}>
           {unit > 0 ? (
             <Svg
@@ -149,10 +189,14 @@ export function HallCanvas({
                   table={t}
                   status={statuses[t.id] ?? 'free'}
                   label={t.label}
-                  badge={badges?.[t.id]}
-                  selected={selectedId === t.id || grabbed?.id === t.id}
+                  sublabel={labels?.[t.id]}
+                  progress={progress?.[t.id]}
+                  selected={selectedId === t.id || grabbed?.id === t.id || focusId === t.id}
                   warn={warnIds?.has(t.id)}
+                  urgent={urgentIds?.has(t.id)}
+                  dimmed={dimIds?.has(t.id)}
                   onPress={() => onTablePress(t)}
+                  onLongPress={onTableLongPress ? () => onTableLongPress(t) : undefined}
                 />
               ))}
             </Svg>
@@ -167,7 +211,7 @@ const styles = StyleSheet.create({
   frame: {
     width: '100%',
     overflow: 'hidden',
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: color.border,
     backgroundColor: color.bg,

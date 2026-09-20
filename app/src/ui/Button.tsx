@@ -1,6 +1,8 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
+import type { Feel } from './haptics';
 import { Icon, type IconName } from './Icon';
+import { Pressable } from './Pressable';
 import { Spinner } from './Spinner';
 import { Text } from './Text';
 import { color, hit, radius, space, type ColorToken } from './tokens';
@@ -15,6 +17,7 @@ type Props = {
   loading?: boolean;
   disabled?: boolean;
   icon?: IconName;
+  haptic?: Feel | 'none';
 };
 
 const bg: Record<ButtonVariant, string | undefined> = {
@@ -24,22 +27,26 @@ const bg: Record<ButtonVariant, string | undefined> = {
   ghost: undefined,
 };
 
-const fg: Record<ButtonVariant, ColorToken> = { primary: 'text', secondary: 'text', danger: 'text', ghost: 'accent' };
+const fg: Record<ButtonVariant, ColorToken> = { primary: 'bg', secondary: 'text', danger: 'bg', ghost: 'accent' };
 
-export function Button({ title, onPress, variant, size, loading, disabled, icon }: Props) {
+const defaultFeel: Record<ButtonVariant, Feel> = {
+  primary: 'success', secondary: 'tap', danger: 'warning', ghost: 'tap',
+};
+
+export function Button({ title, onPress, variant, size, loading, disabled, icon, haptic }: Props) {
   const inactive = disabled || loading;
   return (
     <Pressable
-      accessibilityRole="button"
       accessibilityState={{ disabled: !!inactive, busy: !!loading }}
       disabled={inactive}
+      haptic={inactive ? 'none' : (haptic ?? defaultFeel[variant])}
       onPress={onPress}
-      style={({ pressed }) => [
+      style={[
         styles.base,
         size === 'lg' ? styles.lg : styles.md,
         { backgroundColor: bg[variant] },
         variant === 'secondary' && styles.bordered,
-        (pressed || inactive) && styles.dim,
+        inactive && styles.dim,
       ]}
     >
       <View style={styles.row}>
@@ -57,6 +64,6 @@ const styles = StyleSheet.create({
   md: { minHeight: hit.min },
   lg: { minHeight: hit.min + space[3] },
   bordered: { borderWidth: 1, borderColor: color.border },
-  dim: { opacity: 0.6 },
+  dim: { opacity: 0.5 },
   row: { flexDirection: 'row', alignItems: 'center', gap: space[2] },
 });

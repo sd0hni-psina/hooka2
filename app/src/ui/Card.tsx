@@ -1,25 +1,25 @@
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import type { TableStatus } from '../api/types';
-import { statusStyle } from './status';
-import { color, radius, space } from './tokens';
+import { Pressable } from './Pressable';
+import { color, radius, space, tone } from './tokens';
 
-type Props = { children: ReactNode; onPress?: () => void; status?: TableStatus };
+type Props = { children: ReactNode; onPress?: () => void; onLongPress?: () => void; status?: TableStatus; compact?: boolean };
 
-export function Card({ children, onPress, status }: Props) {
-  const stripe = status ? { borderLeftWidth: space[1], borderLeftColor: color[statusStyle[status].color] } : null;
-  const content = <View style={styles.inner}>{children}</View>;
-  if (!onPress) return <View style={[styles.card, stripe]}>{content}</View>;
+export function Card({ children, onPress, onLongPress, status, compact }: Props) {
+  const toned = status && status !== 'free' ? { borderColor: tone[status].ring, backgroundColor: tone[status].fill } : null;
+  const inner = <View style={compact ? styles.innerCompact : styles.inner}>{children}</View>;
+  if (!onPress && !onLongPress) return <View style={[styles.card, toned]}>{inner}</View>;
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.card, stripe, pressed && styles.pressed]}>
-      {content}
+    <Pressable onPress={onPress} onLongPress={onLongPress} style={[styles.card, toned]}>
+      {inner}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: color.surface, borderRadius: radius.md, borderWidth: 1, borderColor: color.border, overflow: 'hidden' },
+  card: { backgroundColor: color.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: color.border, overflow: 'hidden' },
   inner: { padding: space[4], gap: space[2] },
-  pressed: { backgroundColor: color.surfaceAlt },
+  innerCompact: { padding: space[3], gap: space[1] },
 });
