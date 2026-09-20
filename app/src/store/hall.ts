@@ -10,6 +10,7 @@ type HallStore = HallData & {
   selectHall: (hallId: string | null) => void;
   apply: (msg: ParsedMessage) => boolean;
   setConnection: (c: Connection) => void;
+  dismissBanner: () => void;
 };
 
 // One store per hall: switching halls drops the previous state entirely.
@@ -23,4 +24,5 @@ export const useHallStore = create<HallStore>((set, get) => ({
     return r.resync;
   },
   setConnection: (connection) => set({ connection }),
+  dismissBanner: () => set({ banner: null }),
 }));

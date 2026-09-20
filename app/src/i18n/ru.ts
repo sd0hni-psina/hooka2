@@ -59,6 +59,11 @@ export const t = {
   },
   tasks: {
     title: 'Задачи',
+    claim: 'Беру',
+    confirm: 'Выполнено',
+    claimedBy: (name: string) => `Взял ${name}`,
+    confirmedBy: (name: string) => `Выполнил ${name}`,
+    banner: (label: string, title: string) => `Стол ${label}: ${title}`,
     empty: 'Задач нет',
     emptyHint: 'Задачи появятся, когда столам понадобится сервис',
     strip: 'Требуют внимания',

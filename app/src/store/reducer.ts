@@ -1,14 +1,18 @@
 import type { HallState, Hookah, ServiceEvent } from '../api/types';
 import type { ParsedMessage } from '../ws/envelope';
 
+// Banner is the in-app notice of a task that just fired, tech.md section 10.
+export type Banner = { eventId: string; hookahId: string; tableId: string; tableLabel: string; title: string };
+
 export type HallData = {
   hallId: string | null;
   // seq of the last applied message; null until the first snapshot.
   seq: number | null;
   state: HallState | null;
+  banner: Banner | null;
 };
 
-export const emptyHall: HallData = { hallId: null, seq: null, state: null };
+export const emptyHall: HallData = { hallId: null, seq: null, state: null, banner: null };
 
 export type Reduced = {
   data: HallData;
@@ -37,7 +41,8 @@ export function reduce(data: HallData, msg: ParsedMessage): Reduced {
       // A transfer concerns both halls, so it applies whatever hall it names.
       const ours = msg.env.hall_id === null || msg.env.hall_id === data.hallId || msg.kind === 'hookah.transferred';
       if (!ours) return { data: next, resync: false };
-      return { data: { ...next, state: applyEvent(state, data.hallId, msg) }, resync: false };
+      const applied = applyEvent(state, data.hallId, msg);
+      return { data: { ...next, state: applied, banner: applyBanner(data.banner, applied, msg) }, resync: false };
     }
   }
 }
@@ -67,6 +72,30 @@ function applyEvent(state: HallState, hallId: string | null, msg: EventMessage):
         status: msg.status,
         events: h.events.map((e) => (e.id === msg.eventId ? { ...e, state: 'missed' } : e)),
       }));
+    case 'service.claimed':
+      return mapEvent(state, msg.hookahId, msg.eventId, (e) => ({
+        ...e,
+        claimed_by: msg.claimedBy,
+        claimed_by_name: msg.claimedByName,
+        claimed_at: msg.claimedAt,
+      }));
+    case 'service.confirmed':
+      return mapHookah(state, msg.hookahId, (h) => ({
+        ...h,
+        status: msg.status,
+        events: h.events.map((e) =>
+          e.id === msg.eventId
+            ? {
+                ...e,
+                state: 'confirmed',
+                confirmed_by: msg.confirmedBy,
+                confirmed_by_name: msg.confirmedByName,
+                confirmed_at: msg.confirmedAt,
+                confirmed_early: msg.confirmedEarly,
+              }
+            : e,
+        ),
+      }));
     case 'event':
       return state;
   }
@@ -81,6 +110,27 @@ function withHookah(state: HallState, hookah: Hookah): HallState {
 function mapHookah(state: HallState, hookahId: string, fn: (h: Hookah) => Hookah): HallState {
   if (!state.hookahs.some((h) => h.id === hookahId)) return state;
   return { ...state, hookahs: state.hookahs.map((h) => (h.id === hookahId ? fn(h) : h)) };
+}
+
+function mapEvent(state: HallState, hookahId: string, eventId: string, fn: (e: ServiceEvent) => ServiceEvent): HallState {
+  return mapHookah(state, hookahId, (h) => ({ ...h, events: h.events.map((e) => (e.id === eventId ? fn(e) : e)) }));
+}
+
+// applyBanner raises the in-app notice on a fired task and takes it down as
+// soon as the task leaves the due state, whoever closed it.
+function applyBanner(current: Banner | null, state: HallState, msg: EventMessage): Banner | null {
+  if (msg.kind === 'service.due') {
+    const hookah = state.hookahs.find((h) => h.id === msg.hookahId);
+    const table = state.tables.find((t) => t.id === hookah?.table_id);
+    if (!hookah || !table) return current;
+    return { eventId: msg.event.id, hookahId: hookah.id, tableId: table.id, tableLabel: table.label, title: msg.event.title };
+  }
+  if (!current) return null;
+  const closed =
+    (msg.kind === 'service.confirmed' && msg.eventId === current.eventId) ||
+    (msg.kind === 'service.missed' && msg.eventId === current.eventId) ||
+    (msg.kind === 'hookah.finished' && msg.hookahId === current.hookahId);
+  return closed ? null : current;
 }
 
 function withEvent(events: ServiceEvent[], event: ServiceEvent): ServiceEvent[] {
