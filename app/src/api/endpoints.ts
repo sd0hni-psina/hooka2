@@ -1,10 +1,12 @@
 import { request } from './client';
 import {
   arr, decodeAuthResult, decodeEvent, decodeHall, decodeHallState, decodeHookah, decodeJoinCode, decodeJoinResult,
-  decodeMe, decodeNothing, decodeRefresh, decodeTable, type AuthResult, type JoinResult,
+  decodeMe, decodeNothing, decodePlan, decodeRefresh, decodeStaff, decodeTable, type AuthResult, type JoinResult,
 } from './decode';
 import type { Placement } from '../domain/layout';
-import type { FinishReason, Hall, HallState, Hookah, Me, Platform, ServiceEvent, Shape, Table, Tokens } from './types';
+import type {
+  FinishReason, Hall, HallState, Hookah, Me, Plan, Platform, Role, ServiceEvent, Shape, Staff, Table, Tokens,
+} from './types';
 
 export type DeviceInfo = { device_id: string; platform: Platform };
 
@@ -105,4 +107,20 @@ export function claimEvent(eventId: string): Promise<ServiceEvent> {
 
 export function confirmEvent(eventId: string): Promise<ServiceEvent> {
   return request('POST', `/service-events/${eventId}/confirm`, decodeEvent);
+}
+
+export function getServicePlan(): Promise<Plan> {
+  return request('GET', '/venues/current/service-plan', decodePlan);
+}
+
+export function setServicePlan(plan: Plan): Promise<Plan> {
+  return request('PUT', '/venues/current/service-plan', decodePlan, { body: plan });
+}
+
+export function getStaff(): Promise<Staff[]> {
+  return request('GET', '/venues/current/staff', (u) => arr({ staff: u }, 'staff', 'staff', decodeStaff));
+}
+
+export function patchStaff(staffId: string, patch: { role?: Role; blocked?: boolean }): Promise<Staff> {
+  return request('PATCH', `/staff/${staffId}`, decodeStaff, { body: patch });
 }

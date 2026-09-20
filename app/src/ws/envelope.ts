@@ -1,13 +1,14 @@
 import {
-  arr, bool, decodeEnvelope, decodeEvent, decodeHallState, decodeHookah, decodeStatus, decodeTable, obj, str,
+  arr, bool, decodeEnvelope, decodeEvent, decodeHallState, decodeHookah, decodePlan, decodeStatus, decodeTable, obj, str,
 } from '../api/decode';
-import type { Envelope, HallState, Hookah, ServiceEvent, Table, TableStatus } from '../api/types';
+import type { Envelope, HallState, Hookah, Plan, ServiceEvent, Table, TableStatus } from '../api/types';
 
 export type ParsedMessage =
   | { kind: 'snapshot'; env: Envelope; state: HallState }
   | { kind: 'pong'; env: Envelope; serverTime: string }
   | { kind: 'error'; env: Envelope; code: string; message: string }
   | { kind: 'layout'; env: Envelope; hallId: string; tables: Table[] }
+  | { kind: 'plan'; env: Envelope; plan: Plan }
   | { kind: 'hookah.started'; env: Envelope; hookah: Hookah }
   | { kind: 'hookah.transferred'; env: Envelope; hookah: Hookah; fromTableId: string }
   | { kind: 'hookah.expired'; env: Envelope; hookahId: string; tableId: string; status: TableStatus }
@@ -37,6 +38,10 @@ export function parseMessage(raw: string): ParsedMessage {
     case 'layout.updated': {
       const d = obj(env.data, 'data');
       return { kind: 'layout', env, hallId: str(d, 'hall_id', 'data'), tables: arr(d, 'tables', 'data', decodeTable) };
+    }
+    case 'plan.updated': {
+      const d = obj(env.data, 'data');
+      return { kind: 'plan', env, plan: decodePlan(d.plan, 'data.plan') };
     }
     case 'hookah.started': {
       const d = obj(env.data, 'data');

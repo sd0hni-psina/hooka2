@@ -21,6 +21,8 @@ func (h *Handler) Register(r *httpx.Router) {
 	r.Private("POST /auth/logout", h.logout)
 	r.Private("DELETE /sessions/current", h.logout)
 	r.Private("POST /sessions/push-token", h.pushToken)
+	r.Private("GET /venues/current/staff", h.list)
+	r.Private("PATCH /staff/{staff_id}", h.patch)
 }
 
 func claims(r *http.Request) (auth.Claims, error) {
@@ -117,5 +119,40 @@ func (h *Handler) pushToken(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	httpx.NoContent(w)
+	return nil
+}
+
+func (h *Handler) list(w http.ResponseWriter, r *http.Request) error {
+	c, err := claims(r)
+	if err != nil {
+		return err
+	}
+	list, err := h.svc.List(r.Context(), c)
+	if err != nil {
+		return err
+	}
+	httpx.JSON(w, http.StatusOK, list)
+	return nil
+}
+
+type staffPatch struct {
+	Role    *domain.Role `json:"role"`
+	Blocked *bool        `json:"blocked"`
+}
+
+func (h *Handler) patch(w http.ResponseWriter, r *http.Request) error {
+	c, err := claims(r)
+	if err != nil {
+		return err
+	}
+	var req staffPatch
+	if err := httpx.Decode(r, &req); err != nil {
+		return err
+	}
+	st, err := h.svc.Patch(r.Context(), c, r.PathValue("staff_id"), req.Role, req.Blocked)
+	if err != nil {
+		return err
+	}
+	httpx.JSON(w, http.StatusOK, st)
 	return nil
 }

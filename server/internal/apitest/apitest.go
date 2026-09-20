@@ -57,12 +57,12 @@ func New(t *testing.T, withSeed bool) *Env {
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
+	hub := realtime.NewHub(log)
 	venueRepo, layoutRepo, staffRepo := venue.NewRepository(), layout.NewRepository(), staff.NewRepository()
 	tokens := auth.NewTokens(Secret, AccessTTL)
-	staffSvc := staff.NewService(pool, staffRepo, venueRepo, layoutRepo, tokens, RefreshTTL)
-	venueSvc := venue.NewService(pool, venueRepo)
+	staffSvc := staff.NewService(pool, staffRepo, venueRepo, layoutRepo, tokens, RefreshTTL, hub)
+	venueSvc := venue.NewService(pool, venueRepo, hub)
 	accountSvc := account.NewService(pool, account.NewRepository(), staffRepo, staffSvc, venueRepo, venueSvc)
-	hub := realtime.NewHub(log)
 	hookahSvc := hookah.NewService(pool, hookah.NewRepository(), layoutRepo, venueRepo, staffRepo, hub)
 	layoutSvc := layout.NewService(pool, layoutRepo, hub)
 

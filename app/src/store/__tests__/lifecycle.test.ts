@@ -9,7 +9,12 @@ const snapshotFixture = byType('state.snapshot');
 const hallId = snapshotFixture.hall_id as string;
 const tableId = 'a1b2c3d4-0000-4000-8000-000000000015';
 
-function message(type: string, seq: number, patch: (data: Record<string, unknown>) => void = () => undefined, hall = hallId): ParsedMessage {
+function message(
+  type: string,
+  seq: number,
+  patch: (data: Record<string, unknown>) => void = () => undefined,
+  hall: string | null = hallId,
+): ParsedMessage {
   const env = byType(type);
   const data = structuredClone(env.data) as Record<string, unknown>;
   patch(data);
@@ -161,5 +166,23 @@ describe('claims and confirmations', () => {
     const once = play([snapshot(), message('service.due', 42), message('service.confirmed', 43)]);
     const twice = play([snapshot(), message('service.due', 42), message('service.confirmed', 43), message('service.confirmed', 44)]);
     expect(state(twice).hookahs).toEqual(state(once).hookahs);
+  });
+});
+
+describe('plan and hall switching', () => {
+  it('replaces the venue plan on plan.updated without touching live hookahs', () => {
+    const d = play([snapshot(), message('plan.updated', 42, () => undefined, null)]);
+    expect(state(d).plan.steps[1]?.offset_sec).toBe(720);
+    expect(state(d).hookahs[0]?.events.map((e) => e.due_at)).toEqual(
+      state(play([snapshot()])).hookahs[0]?.events.map((e) => e.due_at),
+    );
+  });
+
+  it('drops the previous hall when another one is selected', () => {
+    const before = play([snapshot(), message('service.due', 42)]);
+    expect(before.state).not.toBeNull();
+    const switched = reduce({ ...before, hallId: 'other-hall', seq: null, state: null, banner: null }, message('hookah.expired', 43)).data;
+    expect(switched.state).toBeNull();
+    expect(switched.seq).toBeNull();
   });
 });

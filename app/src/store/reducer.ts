@@ -53,6 +53,9 @@ function applyEvent(state: HallState, hallId: string | null, msg: EventMessage):
   switch (msg.kind) {
     case 'layout':
       return { ...state, tables: msg.tables };
+    case 'plan':
+      // Live hookahs keep their snapshot; the venue plan only drives new ones.
+      return { ...state, plan: msg.plan };
     case 'hookah.started':
       return withHookah(state, msg.hookah);
     case 'hookah.transferred': {

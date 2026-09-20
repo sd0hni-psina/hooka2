@@ -54,6 +54,7 @@ export default function TableScreen() {
   const router = useRouter();
   const data = useHallStore((s) => s);
   const now = useServerNow();
+  const offline = data.connection !== 'online';
 
   const table = data.state?.tables.find((x) => x.id === id) ?? null;
   const hookah = useMemo(() => (id ? (hookahByTable(data).get(id) ?? null) : null), [data, id]);
@@ -100,14 +101,16 @@ export default function TableScreen() {
       footer={
         hookah ? (
           <>
+            {offline ? <Toast message={t.hall.offline} tone="danger" /> : null}
             {message ? <Toast message={message} tone="danger" /> : null}
-            <Button title={t.table.transfer} variant="secondary" size="lg" icon="swap" loading={busy} onPress={() => setShowTransfer(true)} />
-            <Button title={t.table.finish} variant="danger" size="md" icon="stop" loading={busy} onPress={() => setShowFinish(true)} />
+            <Button title={t.table.transfer} variant="secondary" size="lg" icon="swap" loading={busy} disabled={offline} onPress={() => setShowTransfer(true)} />
+            <Button title={t.table.finish} variant="danger" size="md" icon="stop" loading={busy} disabled={offline} onPress={() => setShowFinish(true)} />
           </>
         ) : (
           <>
+            {offline ? <Toast message={t.hall.offline} tone="danger" /> : null}
             {message ? <Toast message={message} tone="danger" /> : null}
-            <Button title={t.table.start} variant="primary" size="lg" icon="flame" loading={busy} onPress={() => setConfirmStart(true)} />
+            <Button title={t.table.start} variant="primary" size="lg" icon="flame" loading={busy} disabled={offline} onPress={() => setConfirmStart(true)} />
           </>
         )
       }

@@ -11,6 +11,7 @@ import (
 
 	"hookah/server/internal/auth"
 	"hookah/server/internal/domain"
+	"hookah/server/internal/realtime"
 	"hookah/server/internal/store"
 )
 
@@ -22,10 +23,11 @@ var errNoFreeCode = errors.New("no free join code")
 type Service struct {
 	pool *pgxpool.Pool
 	repo *Repository
+	hub  realtime.Broadcaster
 }
 
-func NewService(pool *pgxpool.Pool, repo *Repository) *Service {
-	return &Service{pool: pool, repo: repo}
+func NewService(pool *pgxpool.Pool, repo *Repository, hub realtime.Broadcaster) *Service {
+	return &Service{pool: pool, repo: repo, hub: hub}
 }
 
 func randomCode() (string, error) {
@@ -72,4 +74,33 @@ func (s *Service) RotateCode(ctx context.Context, c auth.Claims) (string, error)
 		}
 	}
 	return "", fmt.Errorf("rotate code: %w", errNoFreeCode)
+}
+
+// PlanUpdated is the payload of plan.updated, tech.md section 9.
+type PlanUpdated struct {
+	Plan domain.Plan `json:"plan"`
+}
+
+// Plan returns the active service plan of the venue.
+func (s *Service) Plan(ctx context.Context, c auth.Claims) (domain.Plan, error) {
+	if err := auth.RequireManager(c); err != nil {
+		return domain.Plan{}, err
+	}
+	return s.repo.GetPlan(ctx, s.pool, c.VenueID)
+}
+
+// SetPlan saves a new service plan. Live hookahs keep their snapshot, so the
+// change reaches only hookahs started after it, tech.md section 7.
+func (s *Service) SetPlan(ctx context.Context, c auth.Claims, plan domain.Plan) (domain.Plan, error) {
+	if err := auth.RequireManager(c); err != nil {
+		return domain.Plan{}, err
+	}
+	if err := domain.ValidatePlan(plan); err != nil {
+		return domain.Plan{}, err
+	}
+	if err := s.repo.SetPlan(ctx, s.pool, c.VenueID, plan); err != nil {
+		return domain.Plan{}, err
+	}
+	s.hub.Publish(c.VenueID, nil, realtime.TypePlanUpdated, PlanUpdated{Plan: plan})
+	return plan, nil
 }

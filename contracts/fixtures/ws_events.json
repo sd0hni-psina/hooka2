@@ -393,6 +393,48 @@
     },
     {
       "v": 1,
+      "type": "plan.updated",
+      "seq": 51,
+      "ts": "2026-09-19T18:07:00.000Z",
+      "venue_id": "5b0d6a1e-2f7c-4c1a-9a51-6f3e8e2b7c10",
+      "hall_id": null,
+      "data": {
+        "plan": {
+          "version": 1,
+          "steps": [
+            {
+              "kind": "check",
+              "title": "Проверьте кальян и узнайте у гостя, всё ли хорошо",
+              "offset_sec": 300
+            },
+            {
+              "kind": "shake",
+              "title": "Стряхните угли",
+              "offset_sec": 720,
+              "repeat_every_sec": 720
+            },
+            {
+              "kind": "replace",
+              "title": "Замените угли",
+              "offset_sec": 1800,
+              "repeat_every_sec": 1800
+            },
+            {
+              "kind": "expire",
+              "title": "Кальян отработал ресурс",
+              "offset_sec": 4800
+            }
+          ],
+          "warn_before_sec": 60,
+          "grace_sec": 120,
+          "missed_after_sec": 600,
+          "push_repeat_sec": 120,
+          "push_max_attempts": 3
+        }
+      }
+    },
+    {
+      "v": 1,
       "type": "pong",
       "seq": 41,
       "ts": "2026-09-19T18:04:06Z",

@@ -8,7 +8,12 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "dev.hookah.timer"
+      "bundleIdentifier": "dev.hookah.timer",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -35,6 +40,16 @@
     },
     "experiments": {
       "typedRoutes": true
+    },
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0E0F13"
+    },
+    "notification": {
+      "icon": "./assets/icon.png",
+      "color": "#4C8DFF",
+      "androidMode": "default"
     }
   }
 }
