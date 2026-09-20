@@ -4,7 +4,7 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 
 import * as Crypto from 'expo-crypto';
 
-import { startHookah } from '../../src/api/endpoints';
+import { claimEvent, startHookah } from '../../src/api/endpoints';
 import type { Table } from '../../src/api/types';
 import { formatDuration } from '../../src/domain/countdown';
 import { describeError } from '../../src/features/join/form';
@@ -35,10 +35,13 @@ export default function HallScreen() {
   const statuses = useMemo(() => statusesAt(data, now), [data, now]);
   const byTable = useMemo(() => hookahByTable(data), [data]);
   const tasks = useMemo(() => selectTasks(data, now), [data, now]);
-  // Every live table shows how long its hookah has been running.
+  // A table shows who took its task, otherwise how long the hookah runs.
   const badges = useMemo(() => {
     const out: Record<string, string> = {};
-    for (const [tableId, h] of byTable) out[tableId] = formatDuration(now - Date.parse(h.started_at));
+    for (const [tableId, h] of byTable) {
+      const claimed = h.events.find((e) => e.state === 'due' && e.claimed_by_name);
+      out[tableId] = claimed?.claimed_by_name ?? formatDuration(now - Date.parse(h.started_at));
+    }
     return out;
   }, [byTable, now]);
 
@@ -76,6 +79,18 @@ export default function HallScreen() {
         right={manager ? <IconButton icon="settings" accessibilityLabel={t.settings.title} onPress={() => router.push('/settings')} /> : undefined}
       />
       {message ? <Toast message={message} tone="danger" /> : null}
+      {data.banner ? (
+        <Toast
+          message={t.tasks.banner(data.banner.tableLabel, data.banner.title)}
+          tone="warning"
+          actionTitle={t.tasks.claim}
+          onAction={() => {
+            const eventId = data.banner?.eventId;
+            useHallStore.getState().dismissBanner();
+            if (eventId) void claimEvent(eventId).catch(() => undefined);
+          }}
+        />
+      ) : null}
 
       {tasks.length > 0 ? (
         <View style={styles.strip}>

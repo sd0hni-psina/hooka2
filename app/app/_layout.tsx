@@ -5,7 +5,10 @@ import { StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import * as Notifications from 'expo-notifications';
+
 import { registerPush } from '../src/features/notifications/registerPush';
+import { actionFor, parseTarget, registerCategory, runAction } from '../src/features/notifications/service';
 import { useAuthStore } from '../src/store/auth';
 import { Spinner } from '../src/ui';
 import { color } from '../src/ui/tokens';
@@ -35,7 +38,27 @@ function useAuthGuard() {
   useEffect(() => {
     if (status !== 'signedIn') return;
     registerPush().catch(() => undefined);
+    registerCategory().catch(() => undefined);
   }, [status]);
+
+  // A tap on a notification button acts right away and opens the table,
+  // tech.md section 19.9.
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const target = parseTarget(response.notification.request.content.data);
+      if (!target) return;
+      const action = actionFor(response.actionIdentifier);
+      void (async () => {
+        try {
+          await useAuthStore.getState().selectHall(target.hallId);
+          await runAction(action, target);
+        } finally {
+          router.push({ pathname: '/table/[id]', params: { id: target.tableId } });
+        }
+      })();
+    });
+    return () => sub.remove();
+  }, [router]);
 
   return status;
 }
