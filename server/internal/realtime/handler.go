@@ -65,8 +65,12 @@ func (h *Handler) writeLoop(ctx context.Context, cancel context.CancelFunc, conn
 		case <-ctx.Done():
 			return
 		case <-c.overflow:
-			if err := conn.Close(websocket.StatusInternalError, "send buffer overflow"); err != nil {
-				h.log.Debug("ws close after overflow", "err", err)
+			status, reason := websocket.StatusInternalError, "send buffer overflow"
+			if c.Evicted() {
+				status, reason = websocket.StatusPolicyViolation, "access revoked"
+			}
+			if err := conn.Close(status, reason); err != nil {
+				h.log.Debug("ws close", "reason", reason, "err", err)
 			}
 			return
 		case msg := <-c.send:

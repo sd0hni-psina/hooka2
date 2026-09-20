@@ -92,3 +92,11 @@ func (Repository) SetCode(ctx context.Context, q store.Querier, venueID, code st
 	}
 	return tag.RowsAffected() == 1, nil
 }
+
+func (Repository) SetPlan(ctx context.Context, q store.Querier, venueID string, plan domain.Plan) error {
+	if _, err := q.Exec(ctx,
+		`update venues set service_plan = $2, updated_at = now() where id = $1`, venueID, plan); err != nil {
+		return fmt.Errorf("set service plan: %w", err)
+	}
+	return nil
+}

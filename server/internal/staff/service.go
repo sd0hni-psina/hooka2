@@ -29,12 +29,16 @@ type Service struct {
 	layout     *layout.Repository
 	tokens     *auth.Tokens
 	refreshTTL time.Duration
+	evictor    Evictor
 	now        func() time.Time
 }
 
 func NewService(pool *pgxpool.Pool, repo *Repository, venues *venue.Repository, layout *layout.Repository,
-	tokens *auth.Tokens, refreshTTL time.Duration) *Service {
-	return &Service{pool: pool, repo: repo, venues: venues, layout: layout, tokens: tokens, refreshTTL: refreshTTL, now: time.Now}
+	tokens *auth.Tokens, refreshTTL time.Duration, evictor Evictor) *Service {
+	return &Service{
+		pool: pool, repo: repo, venues: venues, layout: layout,
+		tokens: tokens, refreshTTL: refreshTTL, evictor: evictor, now: time.Now,
+	}
 }
 
 // Me returns the bootstrap payload of the signed-in device.
@@ -64,11 +68,13 @@ func (s *Service) CheckSession(ctx context.Context, c auth.Claims) error {
 	if err != nil {
 		return err
 	}
+	// Blocked comes first: blocking revokes the sessions too, and the master
+	// must learn that access is closed, not that the token went stale.
+	if found && blocked {
+		return fmt.Errorf("staff %s blocked: %w", c.StaffID, domain.ErrForbidden)
+	}
 	if !found || revoked {
 		return fmt.Errorf("session %s not live: %w", c.SessionID, domain.ErrUnauthorized)
-	}
-	if blocked {
-		return fmt.Errorf("staff %s blocked: %w", c.StaffID, domain.ErrForbidden)
 	}
 	return nil
 }
@@ -231,4 +237,86 @@ func (s *Service) SetPushToken(ctx context.Context, c auth.Claims, token string)
 		return err
 	}
 	return s.repo.SetPushToken(ctx, s.pool, c.SessionID, token)
+}
+
+// Evictor closes the open connections of a staff member. The realtime hub
+// implements it.
+type Evictor interface {
+	CloseStaff(venueID, staffID string)
+}
+
+// List returns the whole staff of the venue, tech.md section 19.11.
+func (s *Service) List(ctx context.Context, c auth.Claims) ([]domain.Staff, error) {
+	if err := auth.RequireManager(c); err != nil {
+		return nil, err
+	}
+	list, err := s.repo.ListVenue(ctx, s.pool, c.VenueID)
+	if err != nil {
+		return nil, err
+	}
+	if list == nil {
+		list = []domain.Staff{}
+	}
+	return list, nil
+}
+
+// Patch changes a role or blocks a staff member. The rules of tech.md
+// section 19.11: only the owner moves roles, nobody touches the owner, and
+// nobody blocks themselves.
+func (s *Service) Patch(ctx context.Context, c auth.Claims, staffID string, role *domain.Role, blocked *bool) (domain.Staff, error) {
+	if err := auth.RequireManager(c); err != nil {
+		return domain.Staff{}, err
+	}
+	if !domain.ValidUUID(staffID) {
+		return domain.Staff{}, fmt.Errorf("staff %q: %w", staffID, domain.ErrNotFound)
+	}
+	if role == nil && blocked == nil {
+		v := &domain.ValidationError{}
+		v.Add("body", domain.ReasonRequired)
+		return domain.Staff{}, v
+	}
+	if role != nil && *role != domain.RoleAdmin && *role != domain.RoleMaster {
+		v := &domain.ValidationError{}
+		v.Add("role", domain.ReasonInvalid)
+		return domain.Staff{}, v
+	}
+	if role != nil && c.Role != domain.RoleOwner {
+		return domain.Staff{}, fmt.Errorf("only the owner changes roles: %w", domain.ErrForbidden)
+	}
+	if blocked != nil && *blocked && staffID == c.StaffID {
+		return domain.Staff{}, fmt.Errorf("blocking yourself: %w", domain.ErrForbidden)
+	}
+	now := domain.DBTime(s.now())
+
+	var out domain.Staff
+	var evict bool
+	err := store.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
+		target, err := s.repo.Get(ctx, tx, c.VenueID, staffID)
+		if err != nil {
+			return err
+		}
+		if target.Role == domain.RoleOwner {
+			return fmt.Errorf("the owner cannot be changed: %w", domain.ErrForbidden)
+		}
+		if role != nil {
+			if err := s.repo.SetRole(ctx, tx, staffID, *role); err != nil {
+				return err
+			}
+		}
+		if blocked != nil {
+			if err := s.repo.SetBlocked(ctx, tx, staffID, *blocked, now); err != nil {
+				return err
+			}
+			evict = *blocked
+		}
+		out, err = s.repo.Get(ctx, tx, c.VenueID, staffID)
+		return err
+	})
+	if err != nil {
+		return domain.Staff{}, err
+	}
+	if evict {
+		s.evictor.CloseStaff(c.VenueID, staffID)
+	}
+	return out, nil
 }

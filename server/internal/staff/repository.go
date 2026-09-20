@@ -226,3 +226,47 @@ func (Repository) RecordAttempt(ctx context.Context, q store.Querier, deviceID, 
 	}
 	return nil
 }
+
+// ListVenue returns the whole staff of a venue, managers first.
+func (Repository) ListVenue(ctx context.Context, q store.Querier, venueID string) ([]domain.Staff, error) {
+	rows, err := q.Query(ctx,
+		`select `+staffColumns+` from staff where venue_id = $1
+		 order by case role when 'owner' then 0 when 'admin' then 1 else 2 end, display_name`, venueID)
+	if err != nil {
+		return nil, fmt.Errorf("list staff: %w", err)
+	}
+	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.Staff, error) {
+		return scanStaff(row)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list staff: %w", err)
+	}
+	return out, nil
+}
+
+// SetRole changes the role of a staff member.
+func (Repository) SetRole(ctx context.Context, q store.Querier, staffID string, role domain.Role) error {
+	if _, err := q.Exec(ctx, `update staff set role = $2 where id = $1`, staffID, role); err != nil {
+		return fmt.Errorf("set role: %w", err)
+	}
+	return nil
+}
+
+// SetBlocked blocks or unblocks a staff member. Blocking also revokes every
+// session, tech.md section 19.11.
+func (Repository) SetBlocked(ctx context.Context, q store.Querier, staffID string, blocked bool, now time.Time) error {
+	if _, err := q.Exec(ctx,
+		`update staff set blocked_at = case when $2 then coalesce(blocked_at, $3) else null end where id = $1`,
+		staffID, blocked, now); err != nil {
+		return fmt.Errorf("set blocked: %w", err)
+	}
+	if !blocked {
+		return nil
+	}
+	if _, err := q.Exec(ctx,
+		`update staff_sessions set revoked_at = coalesce(revoked_at, $2), expo_push_token = null
+		 where staff_id = $1 and revoked_at is null`, staffID, now); err != nil {
+		return fmt.Errorf("revoke sessions of blocked staff: %w", err)
+	}
+	return nil
+}

@@ -68,3 +68,14 @@ func (w *WS) Until(typ string) Message {
 		}
 	}
 }
+
+// Closed reports whether the server dropped this connection.
+func (w *WS) Closed() bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	for {
+		if _, _, err := w.conn.Read(ctx); err != nil {
+			return true
+		}
+	}
+}

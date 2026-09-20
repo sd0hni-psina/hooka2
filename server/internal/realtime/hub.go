@@ -133,3 +133,15 @@ func (h *Hub) SessionOnline(venueID, sessionID string) bool {
 type Snapshotter interface {
 	HallState(ctx context.Context, venueID, hallID string, online []string, now time.Time) (any, error)
 }
+
+// CloseStaff drops every connection of a staff member, so a blocked master
+// stops receiving events at once, tech.md section 19.11.
+func (h *Hub) CloseStaff(venueID, staffID string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for c := range h.clients[venueID] {
+		if c.staffID == staffID {
+			c.evict()
+		}
+	}
+}

@@ -17,6 +17,7 @@ type Client struct {
 	closeMu  sync.Once
 
 	mu          sync.Mutex
+	evicted     bool
 	hall        string
 	subscribed  bool
 	subscribing bool
@@ -110,4 +111,19 @@ func (c *Client) reply(msg []byte) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.push(msg)
+}
+
+// evict asks the write loop to close this connection.
+func (c *Client) evict() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.evicted = true
+	c.markOverflow()
+}
+
+// Evicted reports why the connection is closing.
+func (c *Client) Evicted() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.evicted
 }
