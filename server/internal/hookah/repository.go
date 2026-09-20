@@ -348,3 +348,72 @@ func (r Repository) Contexts(ctx context.Context, q store.Querier, ids []string)
 	}
 	return out, nil
 }
+
+// EventRow is a service event with the hookah it belongs to.
+type EventRow struct {
+	Event  domain.ServiceEvent
+	Hookah Row
+}
+
+// GetEventForUpdate locks the event and its hookah for the transaction.
+func (r Repository) GetEventForUpdate(ctx context.Context, q store.Querier, venueID, eventID string) (EventRow, bool, error) {
+	var out EventRow
+	e, h := &out.Event, &out.Hookah
+	err := q.QueryRow(ctx,
+		`select e.id, e.hookah_id, e.seq, e.kind, e.title, e.due_at, e.state,
+		        e.claimed_by, e.claimed_at, e.confirmed_by, e.confirmed_at, e.confirmed_early,
+		        h.id, h.table_id, h.hall_id, h.state, h.started_at, h.expires_at, h.finished_at,
+		        h.started_by, st.display_name, h.plan_snapshot
+		 from service_events e
+		 join hookahs h on h.id = e.hookah_id
+		 join staff st on st.id = h.started_by
+		 where e.id = $1 and h.venue_id = $2
+		 for update of e, h`, eventID, venueID,
+	).Scan(&e.ID, &e.HookahID, &e.Seq, &e.Kind, &e.Title, &e.DueAt, &e.State,
+		&e.ClaimedBy, &e.ClaimedAt, &e.ConfirmedBy, &e.ConfirmedAt, &e.ConfirmedEarly,
+		&h.ID, &h.TableID, &h.HallID, &h.State, &h.StartedAt, &h.ExpiresAt, &h.FinishedAt,
+		&h.StartedBy, &h.StartedByName, &h.Plan)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return EventRow{}, false, nil
+	}
+	if err != nil {
+		return EventRow{}, false, fmt.Errorf("get event: %w", err)
+	}
+	return out, true, nil
+}
+
+// Claim takes a due task. ok is false when another master was first.
+func (Repository) Claim(ctx context.Context, q store.Querier, eventID, staffID string, now time.Time) (bool, error) {
+	tag, err := q.Exec(ctx,
+		`update service_events set claimed_by = $2, claimed_at = $3
+		 where id = $1 and state = 'due' and claimed_by is null`, eventID, staffID, now)
+	if err != nil {
+		return false, fmt.Errorf("claim event: %w", err)
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+// Confirm closes a task. The condition makes two simultaneous confirmations
+// safe: the loser changes nothing and reads the winner's row.
+func (Repository) Confirm(ctx context.Context, q store.Querier, eventID, staffID string, early bool, now time.Time) (bool, error) {
+	tag, err := q.Exec(ctx,
+		`update service_events set state = 'confirmed', confirmed_by = $2, confirmed_at = $3, confirmed_early = $4
+		 where id = $1 and state in ('due', 'pending') and confirmed_at is null`, eventID, staffID, now, early)
+	if err != nil {
+		return false, fmt.Errorf("confirm event: %w", err)
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+// Event reads one event with the staff names filled in.
+func (Repository) Event(ctx context.Context, q store.Querier, eventID string) (domain.ServiceEvent, error) {
+	rows, err := q.Query(ctx, `select `+eventColumns+eventJoins+` where e.id = $1`, eventID)
+	if err != nil {
+		return domain.ServiceEvent{}, fmt.Errorf("read event: %w", err)
+	}
+	e, err := pgx.CollectExactlyOneRow(rows, scanEvent)
+	if err != nil {
+		return domain.ServiceEvent{}, fmt.Errorf("read event: %w", err)
+	}
+	return e, nil
+}

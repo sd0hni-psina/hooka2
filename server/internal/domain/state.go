@@ -220,3 +220,15 @@ type Tokens struct {
 	RefreshToken    string    `json:"refresh_token"`
 	AccessExpiresAt time.Time `json:"access_expires_at"`
 }
+
+// DecideClaim applies the claim rules of tech.md section 19.9. take is false
+// when another master already holds the task, which is not an error.
+func DecideClaim(hookah HookahState, ev ServiceEvent) (take bool, err error) {
+	if hookah == HookahFinished {
+		return false, ErrHookahFinished
+	}
+	if ev.State != EventDue {
+		return false, ErrEventNotActionable
+	}
+	return ev.ClaimedBy == nil, nil
+}

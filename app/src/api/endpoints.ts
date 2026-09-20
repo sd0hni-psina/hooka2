@@ -1,10 +1,10 @@
 import { request } from './client';
 import {
-  arr, decodeAuthResult, decodeHall, decodeHallState, decodeHookah, decodeJoinCode, decodeJoinResult, decodeMe,
-  decodeNothing, decodeRefresh, decodeTable, type AuthResult, type JoinResult,
+  arr, decodeAuthResult, decodeEvent, decodeHall, decodeHallState, decodeHookah, decodeJoinCode, decodeJoinResult,
+  decodeMe, decodeNothing, decodeRefresh, decodeTable, type AuthResult, type JoinResult,
 } from './decode';
 import type { Placement } from '../domain/layout';
-import type { FinishReason, Hall, HallState, Hookah, Me, Platform, Shape, Table, Tokens } from './types';
+import type { FinishReason, Hall, HallState, Hookah, Me, Platform, ServiceEvent, Shape, Table, Tokens } from './types';
 
 export type DeviceInfo = { device_id: string; platform: Platform };
 
@@ -97,4 +97,12 @@ export function transferHookah(hookahId: string, toTableId: string): Promise<Hoo
 
 export function finishHookah(hookahId: string, reason: FinishReason): Promise<Hookah> {
   return request('POST', `/hookahs/${hookahId}/finish`, decodeHookah, { body: { reason } });
+}
+
+export function claimEvent(eventId: string): Promise<ServiceEvent> {
+  return request('POST', `/service-events/${eventId}/claim`, decodeEvent);
+}
+
+export function confirmEvent(eventId: string): Promise<ServiceEvent> {
+  return request('POST', `/service-events/${eventId}/confirm`, decodeEvent);
 }

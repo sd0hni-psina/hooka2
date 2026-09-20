@@ -31,7 +31,7 @@ export function num(o: Obj, k: string, path: string): number {
   return v;
 }
 
-function bool(o: Obj, k: string, path: string): boolean {
+export function bool(o: Obj, k: string, path: string): boolean {
   const v = o[k];
   if (typeof v !== 'boolean') throw new DecodeError(`${path}.${k}`, 'boolean');
   return v;

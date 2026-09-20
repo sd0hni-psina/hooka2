@@ -82,3 +82,23 @@ func TestValidUUID(t *testing.T) {
 	require.False(t, ValidUUID("0b6f1c9e08f0a-4c43-9d59-1f1f7c1b2a3d"))
 	require.False(t, ValidUUID("zb6f1c9e-8f0a-4c43-9d59-1f1f7c1b2a3d"))
 }
+
+func TestDecideClaim(t *testing.T) {
+	due := ServiceEvent{ID: "e", State: EventDue}
+	other := "master-2"
+	claimed := ServiceEvent{ID: "e", State: EventDue, ClaimedBy: &other}
+
+	take, err := DecideClaim(HookahActive, due)
+	require.NoError(t, err)
+	require.True(t, take)
+
+	take, err = DecideClaim(HookahActive, claimed)
+	require.NoError(t, err)
+	require.False(t, take, "the first master keeps the task")
+
+	_, err = DecideClaim(HookahActive, ServiceEvent{State: EventPending})
+	require.ErrorIs(t, err, ErrEventNotActionable)
+
+	_, err = DecideClaim(HookahFinished, due)
+	require.ErrorIs(t, err, ErrHookahFinished)
+}

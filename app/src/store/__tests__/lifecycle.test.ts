@@ -124,3 +124,42 @@ describe('task strip', () => {
     expect(selectTasks(play([calm]), now)).toHaveLength(0);
   });
 });
+
+describe('claims and confirmations', () => {
+  it('shows who took the task and clears the banner when it is confirmed', () => {
+    const due = play([snapshot(), message('service.due', 42)]);
+    expect(due.banner?.tableLabel).toBe('15');
+
+    const claimed = play([snapshot(), message('service.due', 42), message('service.claimed', 43)]);
+    const event = state(claimed).hookahs[0]?.events.find((e) => e.state === 'due');
+    expect(event?.claimed_by_name).toBe('Ерлан');
+    expect(claimed.banner).not.toBeNull();
+
+    const confirmed = play([
+      snapshot(), message('service.due', 42), message('service.claimed', 43), message('service.confirmed', 44),
+    ]);
+    const closed = state(confirmed).hookahs[0]?.events.find((e) => e.id === 'e0000000-0000-4000-8000-000000000002');
+    expect(closed?.state).toBe('confirmed');
+    expect(closed?.confirmed_by_name).toBe('Ерлан');
+    expect(state(confirmed).hookahs[0]?.status).toBe('green');
+    expect(confirmed.banner).toBeNull();
+  });
+
+  it('keeps deadlines where they are after a confirmation', () => {
+    const before = play([snapshot()]);
+    const after = play([snapshot(), message('service.due', 42), message('service.confirmed', 43)]);
+    expect(state(after).hookahs[0]?.expires_at).toBe(state(before).hookahs[0]?.expires_at);
+    expect(state(after).hookahs[0]?.events.map((e) => e.due_at)).toEqual(state(before).hookahs[0]?.events.map((e) => e.due_at));
+  });
+
+  it('takes the banner down when the task is missed', () => {
+    const d = play([snapshot(), message('service.due', 42), message('service.missed', 43)]);
+    expect(d.banner).toBeNull();
+  });
+
+  it('applies a confirmation twice with the same result', () => {
+    const once = play([snapshot(), message('service.due', 42), message('service.confirmed', 43)]);
+    const twice = play([snapshot(), message('service.due', 42), message('service.confirmed', 43), message('service.confirmed', 44)]);
+    expect(state(twice).hookahs).toEqual(state(once).hookahs);
+  });
+});

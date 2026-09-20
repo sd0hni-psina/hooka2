@@ -4,7 +4,7 @@ import { StyleSheet, View } from 'react-native';
 
 import * as Crypto from 'expo-crypto';
 
-import { finishHookah, startHookah, transferHookah } from '../../../src/api/endpoints';
+import { claimEvent, confirmEvent, finishHookah, startHookah, transferHookah } from '../../../src/api/endpoints';
 import type { FinishReason, ServiceEvent } from '../../../src/api/types';
 import { describeError } from '../../../src/features/join/form';
 import { t } from '../../../src/i18n/ru';
@@ -18,18 +18,32 @@ import { space } from '../../../src/ui/tokens';
 
 const reasons: FinishReason[] = ['guest_left', 'replaced', 'mistake', 'shift_end'];
 
-function EventRow({ event }: { event: ServiceEvent }) {
-  const tone = event.state === 'due' ? 'red' : event.state === 'pending' ? 'neutral' : 'green';
+type EventRowProps = {
+  event: ServiceEvent;
+  onClaim: () => void;
+  onConfirm: () => void;
+};
+
+function EventRow({ event, onClaim, onConfirm }: EventRowProps) {
+  const open = event.state === 'due' || event.state === 'pending';
+  const who = event.claimed_by_name
+    ? t.tasks.claimedBy(event.claimed_by_name)
+    : event.confirmed_by_name
+      ? t.tasks.confirmedBy(event.confirmed_by_name)
+      : t.table.eventState[event.state];
   return (
     <ListRow
       title={event.title}
-      subtitle={t.table.eventState[event.state]}
+      subtitle={who}
       right={
-        event.state === 'pending' || event.state === 'due' ? (
-          <Countdown target={event.due_at} mode={event.state === 'due' ? 'up' : 'down'} />
-        ) : (
-          <Badge title={t.table.eventState[event.state]} tone={tone} />
-        )
+        <View style={styles.actions}>
+          {open ? <Countdown target={event.due_at} mode={event.state === 'due' ? 'up' : 'down'} /> : null}
+          {event.state === 'due' && !event.claimed_by ? (
+            <IconButton icon="hand" variant="filled" accessibilityLabel={t.tasks.claim} onPress={onClaim} />
+          ) : null}
+          {open ? <IconButton icon="check" variant="filled" accessibilityLabel={t.tasks.confirm} onPress={onConfirm} /> : null}
+          {!open ? <Badge title={t.table.eventState[event.state]} tone={event.state === 'confirmed' ? 'green' : 'neutral'} /> : null}
+        </View>
       }
     />
   );
@@ -127,7 +141,12 @@ export default function TableScreen() {
             {hookah.events
               .filter((e) => e.state !== 'cancelled')
               .map((e) => (
-                <EventRow key={e.id} event={e} />
+                <EventRow
+                  key={e.id}
+                  event={e}
+                  onClaim={() => void run(() => claimEvent(e.id))}
+                  onConfirm={() => void run(() => confirmEvent(e.id))}
+                />
               ))}
           </View>
         </>
@@ -209,4 +228,5 @@ export default function TableScreen() {
 
 const styles = StyleSheet.create({
   reasons: { gap: space[1] },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: space[2] },
 });

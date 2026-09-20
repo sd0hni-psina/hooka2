@@ -361,6 +361,38 @@
     },
     {
       "v": 1,
+      "type": "service.claimed",
+      "seq": 49,
+      "ts": "2026-09-19T18:06:00.000Z",
+      "venue_id": "5b0d6a1e-2f7c-4c1a-9a51-6f3e8e2b7c10",
+      "hall_id": "8f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+      "data": {
+        "event_id": "e0000000-0000-4000-8000-000000000002",
+        "hookah_id": "c0ffee00-0000-4000-8000-000000000001",
+        "claimed_by": "5aff0000-0000-4000-8000-000000000001",
+        "claimed_by_name": "Ерлан",
+        "claimed_at": "2026-09-19T18:05:10Z"
+      }
+    },
+    {
+      "v": 1,
+      "type": "service.confirmed",
+      "seq": 50,
+      "ts": "2026-09-19T18:06:00.000Z",
+      "venue_id": "5b0d6a1e-2f7c-4c1a-9a51-6f3e8e2b7c10",
+      "hall_id": "8f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+      "data": {
+        "event_id": "e0000000-0000-4000-8000-000000000002",
+        "hookah_id": "c0ffee00-0000-4000-8000-000000000001",
+        "confirmed_by": "5aff0000-0000-4000-8000-000000000001",
+        "confirmed_by_name": "Ерлан",
+        "confirmed_at": "2026-09-19T18:05:40Z",
+        "confirmed_early": false,
+        "status": "green"
+      }
+    },
+    {
+      "v": 1,
       "type": "pong",
       "seq": 41,
       "ts": "2026-09-19T18:04:06Z",

@@ -1,5 +1,5 @@
 import {
-  arr, decodeEnvelope, decodeEvent, decodeHallState, decodeHookah, decodeStatus, decodeTable, obj, str,
+  arr, bool, decodeEnvelope, decodeEvent, decodeHallState, decodeHookah, decodeStatus, decodeTable, obj, str,
 } from '../api/decode';
 import type { Envelope, HallState, Hookah, ServiceEvent, Table, TableStatus } from '../api/types';
 
@@ -14,6 +14,15 @@ export type ParsedMessage =
   | { kind: 'hookah.finished'; env: Envelope; hookahId: string; tableId: string }
   | { kind: 'service.due'; env: Envelope; event: ServiceEvent; hookahId: string; status: TableStatus }
   | { kind: 'service.missed'; env: Envelope; eventId: string; hookahId: string; status: TableStatus }
+  | {
+      kind: 'service.claimed'; env: Envelope; eventId: string; hookahId: string;
+      claimedBy: string; claimedByName: string; claimedAt: string;
+    }
+  | {
+      kind: 'service.confirmed'; env: Envelope; eventId: string; hookahId: string;
+      confirmedBy: string; confirmedByName: string; confirmedAt: string; confirmedEarly: boolean;
+      status: TableStatus;
+    }
   | { kind: 'event'; env: Envelope };
 
 // parseMessage decodes one raw WS frame. Unknown event types pass through as
@@ -64,6 +73,23 @@ export function parseMessage(raw: string): ParsedMessage {
       return {
         kind: 'service.missed', env, eventId: str(d, 'event_id', 'data'),
         hookahId: str(d, 'hookah_id', 'data'), status: decodeStatus(d, 'status', 'data'),
+      };
+    }
+    case 'service.claimed': {
+      const d = obj(env.data, 'data');
+      return {
+        kind: 'service.claimed', env, eventId: str(d, 'event_id', 'data'), hookahId: str(d, 'hookah_id', 'data'),
+        claimedBy: str(d, 'claimed_by', 'data'), claimedByName: str(d, 'claimed_by_name', 'data'),
+        claimedAt: str(d, 'claimed_at', 'data'),
+      };
+    }
+    case 'service.confirmed': {
+      const d = obj(env.data, 'data');
+      return {
+        kind: 'service.confirmed', env, eventId: str(d, 'event_id', 'data'), hookahId: str(d, 'hookah_id', 'data'),
+        confirmedBy: str(d, 'confirmed_by', 'data'), confirmedByName: str(d, 'confirmed_by_name', 'data'),
+        confirmedAt: str(d, 'confirmed_at', 'data'), confirmedEarly: bool(d, 'confirmed_early', 'data'),
+        status: decodeStatus(d, 'status', 'data'),
       };
     }
     case 'error': {
