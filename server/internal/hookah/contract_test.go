@@ -19,6 +19,8 @@ var payloads = map[string]func() any{
 	"hookah.finished":    func() any { return &FinishedData{} },
 	"service.due":        func() any { return &DueData{} },
 	"service.missed":     func() any { return &MissedData{} },
+	"service.claimed":    func() any { return &ClaimedData{} },
+	"service.confirmed":  func() any { return &ConfirmedData{} },
 }
 
 func TestEventPayloadsMatchSharedFixture(t *testing.T) {
