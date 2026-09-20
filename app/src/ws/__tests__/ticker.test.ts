@@ -33,7 +33,7 @@ describe('shared ticker', () => {
     clock = 10_400;
     const seen: number[] = [];
     subscribeTick('second', (n) => seen.push(n));
-    expect(queue[0].ms).toBe(600);
+    expect(queue[0]?.ms).toBe(600);
     runNext();
     expect(seen).toEqual([11_000]);
   });
