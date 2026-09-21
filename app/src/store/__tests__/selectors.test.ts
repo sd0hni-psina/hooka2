@@ -2,7 +2,7 @@ import fixture from '../../../../contracts/fixtures/ws_events.json';
 import type { Envelope } from '../../api/types';
 import { parseMessage } from '../../ws/envelope';
 import { emptyHall, reduce, type HallData } from '../reducer';
-import { hookahByTable, progressAt, statusesAt, tableLabels } from '../selectors';
+import { hookahByTable, progressAt, savedTables, selectTables, staffOnline, statusesAt, tableLabels } from '../selectors';
 
 const snapshotEnv = fixture.events.find((e) => e.type === 'state.snapshot') as Envelope;
 const hallId = snapshotEnv.hall_id as string;
@@ -50,5 +50,19 @@ describe('derived hall state', () => {
     expect(progressAt(d, start)[hookah?.table_id ?? '']).toBe(0);
     expect(progressAt(d, start + span / 2)[hookah?.table_id ?? '']).toBeCloseTo(0.5, 2);
     expect(progressAt(d, start + span * 2)[hookah?.table_id ?? '']).toBe(1);
+  });
+});
+
+// A zustand 5 selector that returns a new object on every call loops the
+// screen forever. Before the first snapshot every list selector answers empty,
+// and the answer must be the same object each time.
+describe('selectors before the first snapshot', () => {
+  it.each([
+    ['staffOnline', () => staffOnline(emptyHall)],
+    ['savedTables', () => savedTables(emptyHall)],
+    ['selectTables', () => selectTables(emptyHall)],
+  ])('%s returns one empty list', (_name, read) => {
+    expect(read()).toEqual([]);
+    expect(read()).toBe(read());
   });
 });

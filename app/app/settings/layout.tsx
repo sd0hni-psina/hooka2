@@ -11,6 +11,7 @@ import { describeError, explain, type FieldErrors } from '../../src/api/errors';
 import { t } from '../../src/i18n/ru';
 import { useAuthStore } from '../../src/store/auth';
 import { useHallStore } from '../../src/store/hall';
+import { savedTables } from '../../src/store/selectors';
 import {
   AppBar, Badge, Button, ConfirmDialog, EmptyState, HallCanvas, IconButton, Input, NumberField, Screen,
   SegmentedControl, Sheet, Text, toast,
@@ -23,7 +24,7 @@ export default function LayoutEditor() {
   const router = useRouter();
   const hallId = useAuthStore((s) => s.hallId ?? s.me?.halls[0]?.id ?? null);
   const hallName = useAuthStore((s) => s.me?.halls.find((h) => h.id === s.hallId)?.name ?? '');
-  const saved = useHallStore((s) => s.state?.tables ?? []);
+  const saved = useHallStore(savedTables);
 
   // Dragging only overrides positions; everything else comes from the server.
   const [moved, setMoved] = useState<Record<string, { x: number; y: number }>>({});
