@@ -30,6 +30,11 @@ type HallStore = HallData & {
 
 const queue = new RetryQueue();
 
+// heardAt is when the last frame of any kind arrived. It dates the hall the
+// moment the link drops, tech.md section 19.17. It is not state: nothing
+// renders it, and a write per pong must not wake a subscriber.
+let heardAt: number | null = null;
+
 // patch is what the master sees the instant the finger lifts, before the
 // server has said anything, tech.md section 19.15.
 function patch(event: ServiceEvent, kind: PendingAction, actor: Actor, nowIso: string): ServiceEvent {
@@ -99,11 +104,13 @@ export const useHallStore = create<HallStore>((set, get) => {
 
     selectHall: (hallId) => {
       queue.clear();
+      heardAt = null;
       set({ ...emptyHall, hallId, queued: 0 });
       if (hallId) hydrate(hallId);
     },
 
     apply: (msg) => {
+      heardAt = serverNow();
       const r = reduce(get(), msg);
       if (r.data !== get()) set(r.data);
       if (msg.kind === 'snapshot' && r.data.state && r.data.hallId) {
@@ -114,7 +121,12 @@ export const useHallStore = create<HallStore>((set, get) => {
 
     setConnection: (connection) => {
       const was = get().connection;
-      set({ connection });
+      // Leaving online, the screen can no longer be trusted: date it. The
+      // flag stays until a snapshot of the new connection lands, so a reopened
+      // socket that has not spoken yet does not pass for fresh.
+      const { state, stale } = get();
+      const date = connection !== 'online' && state !== null && !stale;
+      set(date ? { connection, stale: true, savedAt: new Date(heardAt ?? serverNow()).toISOString() } : { connection });
       if (connection === 'online' && was !== 'online' && queue.size() > 0) flush();
     },
 
