@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /server
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: npm
+    directory: /app
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # Expo SDK packages move together, a lone bump breaks the SDK contract.
+      expo:
+        patterns: ["expo", "expo-*", "@expo/*", "react-native*", "react", "react-dom"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

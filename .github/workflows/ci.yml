@@ -29,8 +29,13 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: server/go.mod
+          # go.mod names go 1.26.0. Without the latest patch govulncheck reports
+          # every standard library fix released since then.
+          check-latest: true
           cache-dependency-path: server/go.sum
       - run: go vet ./...
+      - name: known vulnerabilities in reachable code
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
       - uses: golangci/golangci-lint-action@v8
         with:
           version: v2.13.2
@@ -55,6 +60,8 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
       - run: npm ci
+      - name: known vulnerabilities in shipped dependencies
+        run: npm audit --omit=dev --audit-level=high
       - run: npx tsc --noEmit
       - run: npx eslint .
       - run: npx jest --ci
