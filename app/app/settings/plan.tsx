@@ -5,11 +5,11 @@ import { StyleSheet, View } from 'react-native';
 import { getServicePlan, setServicePlan } from '../../src/api/endpoints';
 import type { Plan } from '../../src/api/types';
 import { previewPlan, validatePlan } from '../../src/domain/plan';
-import { describeError } from '../../src/features/join/form';
+import { explain } from '../../src/api/errors';
 import { t } from '../../src/i18n/ru';
 import { useHallStore } from '../../src/store/hall';
 import {
-  AppBar, Badge, Button, Card, IconButton, ListRow, NumberField, Screen, Spinner, Text, Toast,
+  AppBar, Badge, Button, Card, IconButton, ListRow, NumberField, Screen, Spinner, Text, toast,
 } from '../../src/ui';
 import { serverNow } from '../../src/ws/clock';
 import { space } from '../../src/ui/tokens';
@@ -24,14 +24,16 @@ export default function PlanEditor() {
   const fromHall = useHallStore((s) => s.state?.plan ?? null);
   const [plan, setPlan] = useState<Plan | null>(fromHall);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     if (plan) return;
     getServicePlan()
       .then(setPlan)
-      .catch((e: unknown) => setMessage(describeError(e).message ?? t.errors.unknown));
+      .catch((e: unknown) => {
+        setFailed(true);
+        toast({ key: 'plan', message: explain(e), tone: 'danger' });
+      });
   }, [plan]);
 
   const problem = useMemo(() => (plan ? validatePlan(plan) : null), [plan]);
@@ -44,7 +46,11 @@ export default function PlanEditor() {
     return (
       <Screen>
         <AppBar title={t.plan.title} left={<IconButton icon="chevron-left" accessibilityLabel={t.ui.close} onPress={() => router.back()} />} />
-        {message ? <Toast message={message} tone="danger" /> : <Spinner size="large" />}
+        {failed ? (
+          <Button title={t.ui.retry} variant="secondary" size="md" icon="refresh" onPress={() => setFailed(false)} />
+        ) : (
+          <Spinner size="large" />
+        )}
       </Screen>
     );
   }
@@ -54,15 +60,12 @@ export default function PlanEditor() {
 
   const save = async () => {
     setBusy(true);
-    setMessage(null);
-    setSaved(false);
     try {
       const stored = await setServicePlan(plan);
       setPlan(stored);
-      setSaved(true);
+      toast({ key: 'plan', message: t.plan.saved, tone: 'success' });
     } catch (e) {
-      const d = describeError(e);
-      setMessage(d.message ?? t.errors.unknown);
+      toast({ key: 'plan', message: explain(e), tone: 'danger' });
     } finally {
       setBusy(false);
     }
@@ -73,9 +76,11 @@ export default function PlanEditor() {
       scroll
       footer={
         <>
-          {problem ? <Toast message={t.plan.invalid(problem.reason)} tone="danger" /> : null}
-          {message ? <Toast message={message} tone="danger" /> : null}
-          {saved ? <Toast message={t.plan.saved} tone="success" /> : null}
+          {problem ? (
+            <Text variant="label" color="danger">
+              {t.plan.invalid(problem.reason)}
+            </Text>
+          ) : null}
           <Button title={t.plan.save} variant="primary" size="lg" icon="check" loading={busy} disabled={problem !== null} onPress={() => void save()} />
         </>
       }

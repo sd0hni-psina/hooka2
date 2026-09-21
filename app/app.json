@@ -50,6 +50,13 @@
       "icon": "./assets/icon.png",
       "color": "#4C8DFF",
       "androidMode": "default"
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "154d06ec-d150-4f4a-be8c-f57541e49249"
+      }
+    },
+    "owner": "sd0hni_psina"
   }
 }

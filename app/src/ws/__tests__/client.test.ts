@@ -140,3 +140,34 @@ describe('WsClient', () => {
     expect(timers).toEqual([]);
   });
 });
+
+describe('return from background', () => {
+  it('opens at once instead of waiting out the backoff', async () => {
+    const { client, sockets, timers } = setup();
+    client.subscribe('hall-1');
+    client.start();
+    await flush();
+    sockets[0]?.close();
+    // A pending retry is what the master would otherwise wait for.
+    expect(timers.some((t) => t.ms >= 1000)).toBe(true);
+
+    client.resume();
+    await flush();
+    expect(sockets).toHaveLength(2);
+    expect(timers.some((t) => t.ms >= 1000)).toBe(false);
+  });
+
+  it('asks for a fresh snapshot when the socket survived the background', async () => {
+    const { client, sockets } = setup();
+    client.subscribe('hall-1');
+    client.start();
+    await flush();
+    const socket = sockets[0];
+    socket?.sent.splice(0, socket.sent.length);
+
+    client.resume();
+    await flush();
+    expect(sockets).toHaveLength(1);
+    expect(socket?.sent.map((m) => m.type)).toEqual(['subscribe']);
+  });
+});

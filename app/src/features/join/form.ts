@@ -1,14 +1,8 @@
-import { ApiError, NetworkError } from '../../api/errors';
 import { t } from '../../i18n/ru';
 
 export type FieldErrors = Record<string, string>;
 
 const reasons = t.fields;
-type Reason = keyof typeof reasons;
-
-function isReason(r: unknown): r is Reason {
-  return typeof r === 'string' && r in reasons;
-}
 
 // validateJoin mirrors the server rules of tech.md section 19.1 so the master
 // sees mistakes before the request.
@@ -35,32 +29,4 @@ export function validateRegister(v: { email: string; password: string; display_n
   if (!v.display_name.trim()) e.display_name = reasons.required;
   if (!v.venue_name.trim()) e.venue_name = reasons.required;
   return e;
-}
-
-// describeError turns an API failure into a form-level message and field errors.
-export function describeError(err: unknown): { message: string | null; fields: FieldErrors } {
-  if (err instanceof NetworkError) return { message: t.errors.network, fields: {} };
-  if (!(err instanceof ApiError)) return { message: t.errors.unknown, fields: {} };
-  switch (err.code) {
-    case 'invalid_join_code':
-      return { message: null, fields: { code: t.errors.invalidCode } };
-    case 'rate_limited': {
-      const sec = typeof err.details?.retry_after_sec === 'number' ? err.details.retry_after_sec : 60;
-      return { message: t.errors.rateLimited(sec), fields: {} };
-    }
-    case 'unauthorized':
-      return { message: t.errors.wrongCredentials, fields: {} };
-    case 'forbidden':
-      return { message: t.errors.blocked, fields: {} };
-    case 'validation_failed': {
-      const fields: FieldErrors = {};
-      const raw = err.details?.fields;
-      if (typeof raw === 'object' && raw !== null) {
-        for (const [k, r] of Object.entries(raw)) fields[k] = isReason(r) ? reasons[r] : reasons.invalid;
-      }
-      return { message: null, fields };
-    }
-    default:
-      return { message: err.message, fields: {} };
-  }
 }
