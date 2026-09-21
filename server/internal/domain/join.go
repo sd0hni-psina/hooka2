@@ -47,9 +47,15 @@ func nthOldest(ts []time.Time, n int) time.Time {
 	return sorted[n]
 }
 
-// FormatJoinCode renders 0..9999 as four digits.
+// Join codes are six digits, tech.md section 19.16.
+const (
+	JoinCodeLen   = 6
+	JoinCodeSpace = 1_000_000
+)
+
+// FormatJoinCode renders 0..999999 as six digits.
 func FormatJoinCode(n int) string {
-	return fmt.Sprintf("%04d", n%10000)
+	return fmt.Sprintf("%0*d", JoinCodeLen, n%JoinCodeSpace)
 }
 
 func checkLen(v *ValidationError, field, value string, minLen, maxLen int) {
@@ -97,7 +103,7 @@ func ValidateJoin(in JoinInput) (JoinInput, error) {
 	var v ValidationError
 	if in.Code == "" {
 		v.Add("code", ReasonRequired)
-	} else if !isDigits(in.Code, 4) {
+	} else if !isDigits(in.Code, JoinCodeLen) {
 		v.Add("code", ReasonInvalid)
 	}
 	checkLen(&v, "display_name", in.DisplayName, 1, 40)

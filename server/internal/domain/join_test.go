@@ -74,7 +74,7 @@ func TestJoinRetryAfterAllowsTheAttemptOnceTheWaitPasses(t *testing.T) {
 }
 
 func TestValidateJoin(t *testing.T) {
-	ok := JoinInput{Code: "0421", DisplayName: "  Ерлан ", Device: Device{DeviceID: "device-123", Platform: PlatformAndroid}}
+	ok := JoinInput{Code: "042137", DisplayName: "  Ерлан ", Device: Device{DeviceID: "device-123", Platform: PlatformAndroid}}
 	got, err := ValidateJoin(ok)
 	require.NoError(t, err)
 	require.Equal(t, "Ерлан", got.DisplayName)
@@ -86,7 +86,9 @@ func TestValidateJoin(t *testing.T) {
 		reason string
 	}{
 		{"three digit code is invalid", func(in *JoinInput) { in.Code = "123" }, "code", ReasonInvalid},
-		{"letters in code are invalid", func(in *JoinInput) { in.Code = "12a4" }, "code", ReasonInvalid},
+		{"four digit code of the old contract is invalid", func(in *JoinInput) { in.Code = "0421" }, "code", ReasonInvalid},
+		{"seven digit code is invalid", func(in *JoinInput) { in.Code = "0421378" }, "code", ReasonInvalid},
+		{"letters in code are invalid", func(in *JoinInput) { in.Code = "12a456" }, "code", ReasonInvalid},
 		{"empty name is required", func(in *JoinInput) { in.DisplayName = "   " }, "display_name", ReasonRequired},
 		{"name over 40 runes is too long", func(in *JoinInput) { in.DisplayName = repeat("я", 41) }, "display_name", ReasonTooLong},
 		{"short device id is too short", func(in *JoinInput) { in.DeviceID = "abc" }, "device_id", ReasonTooShort},
@@ -132,8 +134,20 @@ func TestValidatePushToken(t *testing.T) {
 }
 
 func TestFormatJoinCode(t *testing.T) {
-	require.Equal(t, "0007", FormatJoinCode(7))
-	require.Equal(t, "9999", FormatJoinCode(9999))
+	require.Equal(t, "000007", FormatJoinCode(7))
+	require.Equal(t, "999999", FormatJoinCode(999999))
+	require.Equal(t, "000000", FormatJoinCode(JoinCodeSpace))
+}
+
+func TestFormatJoinCodeAlwaysValidates(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		n := rapid.IntRange(0, JoinCodeSpace-1).Draw(t, "n")
+		code := FormatJoinCode(n)
+		in := JoinInput{Code: code, DisplayName: "Ерлан", Device: Device{DeviceID: "device-123", Platform: PlatformAndroid}}
+		if _, err := ValidateJoin(in); err != nil {
+			t.Fatalf("generated code %q fails validation: %v", code, err)
+		}
+	})
 }
 
 func repeat(s string, n int) string {

@@ -23,7 +23,7 @@ func TestRotateCode(t *testing.T) {
 		res := e.Do("POST", "/venues/current/rotate-code", e.TokenFor(e.Fx.Owner), nil)
 		require.Equal(t, 200, res.Status)
 		code := res.Body["join_code"].(string)
-		require.Regexp(t, `^\d{4}$`, code)
+		require.Regexp(t, `^\d{6}$`, code)
 		require.NotEqual(t, seed.JoinCode, code)
 
 		join := func(c string) apitest.Response {
