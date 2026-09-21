@@ -36,7 +36,7 @@ jobs:
       - run: go vet ./...
       - name: known vulnerabilities in reachable code
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
-      - uses: golangci/golangci-lint-action@v8
+      - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.13.2
           working-directory: server
