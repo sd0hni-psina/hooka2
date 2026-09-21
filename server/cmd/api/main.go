@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"hookah/server/internal/account"
+	"hookah/server/internal/attempts"
 	"hookah/server/internal/auth"
 	"hookah/server/internal/config"
 	"hookah/server/internal/hookah"
@@ -102,7 +103,10 @@ func run(cfg config.Config, log *slog.Logger) error {
 	defer cancelBG()
 	wg.Add(2)
 	pushQueue := push.NewQueue(pool, hub)
-	go func() { defer wg.Done(); scheduler.New(log, cfg.SchedulerTick, hookahSvc, pushQueue).Run(bg) }()
+	go func() {
+		defer wg.Done()
+		scheduler.New(log, cfg.SchedulerTick, hookahSvc, pushQueue, attempts.NewPurger(pool)).Run(bg)
+	}()
 	go func() { defer wg.Done(); push.NewWorker(pool, sender, log, cfg.PushTick).Run(bg) }()
 
 	errc := make(chan error, 1)

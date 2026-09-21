@@ -12,6 +12,7 @@ type Result struct {
 	Missed  int
 	Expired int
 	Queued  int
+	Purged  int
 }
 
 func (r *Result) add(o Result) {
@@ -19,6 +20,7 @@ func (r *Result) add(o Result) {
 	r.Missed += o.Missed
 	r.Expired += o.Expired
 	r.Queued += o.Queued
+	r.Purged += o.Purged
 }
 
 // Ticker runs one pass. The hookah service implements it; tests use a fake.
@@ -64,7 +66,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 			if failed {
 				continue
 			}
-			s.log.Debug("scheduler tick", "due", res.Due, "missed", res.Missed, "expired", res.Expired, "queued", res.Queued)
+			s.log.Debug("scheduler tick", "due", res.Due, "missed", res.Missed, "expired", res.Expired, "queued", res.Queued, "purged", res.Purged)
 		}
 	}
 }
