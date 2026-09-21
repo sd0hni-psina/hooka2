@@ -45,7 +45,15 @@ export function reduce(data: HallData, msg: ParsedMessage): Reduced {
       if (msg.env.hall_id !== data.hallId) return { data, resync: false };
       // The snapshot is the truth: every local guess goes with it.
       return {
-        data: { ...data, seq: msg.env.seq, state: msg.state, stale: false, savedAt: null, pending: {} },
+        data: {
+          ...data,
+          seq: msg.env.seq,
+          state: msg.state,
+          banner: bannerStillDue(data.banner, msg.state),
+          stale: false,
+          savedAt: null,
+          pending: {},
+        },
         resync: false,
       };
     case 'pong':
@@ -168,6 +176,16 @@ function pendingIdsFor(pending: Record<string, Optimistic>, msg: EventMessage): 
     default:
       return [];
   }
+}
+
+// bannerStillDue keeps a notice across a snapshot only when its task is still
+// due. The events that would have taken it down may have died with the link,
+// and a button on a closed task answers event_not_actionable.
+function bannerStillDue(banner: Banner | null, state: HallState): Banner | null {
+  if (!banner) return null;
+  const hookah = state.hookahs.find((h) => h.id === banner.hookahId);
+  const event = hookah?.events.find((e) => e.id === banner.eventId);
+  return event?.state === 'due' ? banner : null;
 }
 
 // applyBanner raises the in-app notice on a fired task and takes it down as

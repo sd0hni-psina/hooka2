@@ -106,6 +106,36 @@ describe('hookah lifecycle in the store', () => {
   });
 });
 
+describe('banner after a resync', () => {
+  const dueId = 'e0000000-0000-4000-8000-000000000002';
+  // The link dropped with the banner up, another master finished the task,
+  // and the socket came back with a snapshot that knows nothing of the banner.
+  const resync = (patch: (data: Record<string, unknown>) => void) => message('state.snapshot', 60, patch);
+  const dueEvent = (data: Record<string, unknown>) =>
+    ((data.hookahs as Record<string, unknown>[])[0]?.events as Record<string, unknown>[]).find((e) => e.id === dueId);
+  const raised = () => play([snapshot(), message('service.due', 42)]);
+
+  it('takes the banner down when the snapshot shows the task confirmed', () => {
+    const d = play([resync((data) => Object.assign(dueEvent(data) ?? {}, { state: 'confirmed', confirmed_at: '2026-09-19T18:04:00Z' }))], raised());
+    expect(d.banner).toBeNull();
+  });
+
+  it('takes the banner down when the snapshot shows the task missed', () => {
+    const d = play([resync((data) => Object.assign(dueEvent(data) ?? {}, { state: 'missed' }))], raised());
+    expect(d.banner).toBeNull();
+  });
+
+  it('takes the banner down when the hookah is gone from the snapshot', () => {
+    const d = play([resync((data) => void (data.hookahs = []))], raised());
+    expect(d.banner).toBeNull();
+  });
+
+  it('keeps the banner while the snapshot still shows the task due', () => {
+    const d = play([resync(() => undefined)], raised());
+    expect(d.banner?.eventId).toBe(dueId);
+  });
+});
+
 describe('task strip', () => {
   const now = Date.parse('2026-09-19T18:05:00Z');
 
