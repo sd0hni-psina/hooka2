@@ -40,7 +40,8 @@ type candidate struct {
 
 // Tick queues the first push of freshly due events and the repeats of the
 // ones still waiting. The unique index on (event, session, attempt) keeps a
-// repeated tick from sending twice.
+// repeated tick from sending twice. A finished hookah keeps its due events
+// for history, so the state of the hookah decides too, tech.md section 7.
 func (q *Queue) Tick(ctx context.Context, now time.Time) (scheduler.Result, error) {
 	now = domain.DBTime(now)
 	var res scheduler.Result
@@ -50,6 +51,7 @@ func (q *Queue) Tick(ctx context.Context, now time.Time) (scheduler.Result, erro
 			from service_events e
 			join hookahs h on h.id = e.hookah_id
 			where e.state = 'due'
+			  and h.state <> 'finished'
 			  and e.push_attempts < ((h.plan_snapshot->>'push_max_attempts')::int)
 			  and (e.last_push_at is null
 			       or e.last_push_at + (((h.plan_snapshot->>'push_repeat_sec')::int) * interval '1 second') <= $1)
