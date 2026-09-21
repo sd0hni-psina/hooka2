@@ -15,6 +15,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/bcrypt"
 
 	"hookah/server/internal/account"
 	"hookah/server/internal/auth"
@@ -30,6 +31,10 @@ import (
 )
 
 const (
+	// PasswordCost is cheap on purpose, one above bcrypt.MinCost so a test can
+	// plant a weaker hash and watch a login upgrade it.
+	PasswordCost = bcrypt.MinCost + 1
+
 	Secret     = "test-secret"
 	AccessTTL  = 30 * time.Minute
 	RefreshTTL = 90 * 24 * time.Hour
@@ -64,7 +69,7 @@ func New(t *testing.T, withSeed bool) *Env {
 	tokens := auth.NewTokens(Secret, AccessTTL)
 	staffSvc := staff.NewService(pool, staffRepo, venueRepo, layoutRepo, tokens, RefreshTTL, hub)
 	venueSvc := venue.NewService(pool, venueRepo, hub)
-	accountSvc := account.NewService(pool, account.NewRepository(), staffRepo, staffSvc, venueRepo, venueSvc)
+	accountSvc := account.NewService(pool, account.NewRepository(), staffRepo, staffSvc, venueRepo, venueSvc, PasswordCost)
 	hookahSvc := hookah.NewService(pool, hookah.NewRepository(), layoutRepo, venueRepo, staffRepo, hub)
 	layoutSvc := layout.NewService(pool, layoutRepo, hub)
 

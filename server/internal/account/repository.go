@@ -36,6 +36,16 @@ func (Repository) Create(ctx context.Context, q store.Querier, email, hash, name
 	return id, true, nil
 }
 
+// UpgradeHash swaps the stored hash for a stronger one of the same password.
+// The condition on the old hash keeps a hash that changed meanwhile.
+func (Repository) UpgradeHash(ctx context.Context, q store.Querier, id, oldHash, newHash string) error {
+	if _, err := q.Exec(ctx,
+		`update accounts set password_hash = $3 where id = $1 and password_hash = $2`, id, oldHash, newHash); err != nil {
+		return fmt.Errorf("upgrade password hash: %w", err)
+	}
+	return nil
+}
+
 func (Repository) GetByEmail(ctx context.Context, q store.Querier, email string) (Account, bool, error) {
 	var a Account
 	err := q.QueryRow(ctx,

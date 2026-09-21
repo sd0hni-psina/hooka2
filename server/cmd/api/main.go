@@ -72,7 +72,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 	hookahSvc := hookah.NewService(pool, hookahRepo, layoutRepo, venueRepo, staffRepo, hub)
 	venueSvc := venue.NewService(pool, venueRepo, hub)
 	layoutSvc := layout.NewService(pool, layoutRepo, hub)
-	accountSvc := account.NewService(pool, account.NewRepository(), staffRepo, staffSvc, venueRepo, venueSvc)
+	accountSvc := account.NewService(pool, account.NewRepository(), staffRepo, staffSvc, venueRepo, venueSvc, auth.PasswordCost)
 
 	guard := auth.NewGuard(tokens, staffSvc, httpx.WriteError)
 

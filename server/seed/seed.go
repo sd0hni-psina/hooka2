@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/crypto/bcrypt"
 
 	"hookah/server/internal/auth"
 	"hookah/server/internal/domain"
@@ -104,7 +105,8 @@ func seed(ctx context.Context, tx pgx.Tx, now time.Time) (Fixture, error) {
 		return fx, err
 	}
 
-	hash, err := auth.HashPassword(OwnerPassword)
+	// A public fixture, so a cheap hash is fine. The first login upgrades it.
+	hash, err := auth.HashPassword(OwnerPassword, bcrypt.MinCost)
 	if err != nil {
 		return fx, err
 	}

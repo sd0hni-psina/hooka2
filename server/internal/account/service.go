@@ -3,6 +3,7 @@ package account
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -21,18 +22,24 @@ type Result struct {
 }
 
 type Service struct {
-	pool      *pgxpool.Pool
-	repo      *Repository
-	staffRepo *staff.Repository
-	staff     *staff.Service
-	venueRepo *venue.Repository
-	venues    *venue.Service
-	now       func() time.Time
+	pool         *pgxpool.Pool
+	repo         *Repository
+	staffRepo    *staff.Repository
+	staff        *staff.Service
+	venueRepo    *venue.Repository
+	venues       *venue.Service
+	passwordCost int
+	now          func() time.Time
 }
 
+// NewService takes the bcrypt cost of new hashes: auth.PasswordCost in the
+// api, a cheap one in tests.
 func NewService(pool *pgxpool.Pool, repo *Repository, staffRepo *staff.Repository, staffSvc *staff.Service,
-	venueRepo *venue.Repository, venues *venue.Service) *Service {
-	return &Service{pool: pool, repo: repo, staffRepo: staffRepo, staff: staffSvc, venueRepo: venueRepo, venues: venues, now: time.Now}
+	venueRepo *venue.Repository, venues *venue.Service, passwordCost int) *Service {
+	return &Service{
+		pool: pool, repo: repo, staffRepo: staffRepo, staff: staffSvc, venueRepo: venueRepo, venues: venues,
+		passwordCost: passwordCost, now: time.Now,
+	}
 }
 
 // Register creates the owner account, the venue with the default plan and
@@ -42,7 +49,7 @@ func (s *Service) Register(ctx context.Context, in domain.RegisterInput) (Result
 	if err != nil {
 		return Result{}, err
 	}
-	hash, err := auth.HashPassword(in.Password)
+	hash, err := auth.HashPassword(in.Password, s.passwordCost)
 	if err != nil {
 		return Result{}, err
 	}
@@ -104,6 +111,7 @@ func (s *Service) Login(ctx context.Context, in domain.LoginInput) (Result, erro
 	if !ok {
 		return Result{}, fmt.Errorf("login: wrong password: %w", domain.ErrUnauthorized)
 	}
+	s.upgradeHash(ctx, acc, in.Password)
 	now := domain.DBTime(s.now())
 	var res Result
 	err = store.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
@@ -131,5 +139,28 @@ func (s *Service) Login(ctx context.Context, in domain.LoginInput) (Result, erro
 	return res, nil
 }
 
-// dummyHash is bcrypt("not-a-password") at cost 10.
-const dummyHash = "$2a$10$t9jWBGXx7/eDl9lMni12ReZ11Gri0NVEh76499cV0ezTslb1/Mk.O"
+// upgradeHash replaces a hash made at a lower cost with one at the current
+// cost. It runs only after the password was proven. A failure is logged and
+// the login goes on: the old hash still works, and the next login retries.
+func (s *Service) upgradeHash(ctx context.Context, acc Account, password string) {
+	needs, err := auth.NeedsRehash(acc.PasswordHash, s.passwordCost)
+	if err != nil {
+		slog.WarnContext(ctx, "password hash cost", "account_id", acc.ID, "err", err)
+		return
+	}
+	if !needs {
+		return
+	}
+	fresh, err := auth.HashPassword(password, s.passwordCost)
+	if err != nil {
+		slog.WarnContext(ctx, "rehash password", "account_id", acc.ID, "err", err)
+		return
+	}
+	if err := s.repo.UpgradeHash(ctx, s.pool, acc.ID, acc.PasswordHash, fresh); err != nil {
+		slog.WarnContext(ctx, "store rehashed password", "account_id", acc.ID, "err", err)
+	}
+}
+
+// dummyHash is bcrypt("not-a-password") at cost 12, auth.PasswordCost. A test
+// keeps it in step with the cost.
+const dummyHash = "$2a$12$rvl4uP/paR3G7kFTnvQrSuk6IB8oPqCprWFNKqjbEQSu1wyOXTb3y"
