@@ -35,7 +35,7 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) error {
 	res, err := h.svc.Register(r.Context(), domain.RegisterInput{
 		Email: req.Email, Password: req.Password, DisplayName: req.DisplayName, VenueName: req.VenueName,
 		Device: domain.Device{DeviceID: req.DeviceID, Platform: req.Platform},
-	})
+	}, httpx.ClientIPFrom(r.Context()))
 	if err != nil {
 		return err
 	}
@@ -58,7 +58,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) error {
 	res, err := h.svc.Login(r.Context(), domain.LoginInput{
 		Email: req.Email, Password: req.Password,
 		Device: domain.Device{DeviceID: req.DeviceID, Platform: req.Platform},
-	})
+	}, httpx.ClientIPFrom(r.Context()))
 	if err != nil {
 		return err
 	}

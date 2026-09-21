@@ -11,8 +11,17 @@ import (
 
 // An unknown email burns a comparison against dummyHash so its latency matches
 // a real account. That only works while both use the same cost.
-func TestDummyHashHasTheCurrentCost(t *testing.T) {
-	cost, err := bcrypt.Cost([]byte(dummyHash))
-	require.NoError(t, err)
-	require.Equal(t, auth.PasswordCost, cost)
+func TestDummyHashFollowsThePasswordCost(t *testing.T) {
+	for _, cost := range []int{bcrypt.MinCost, bcrypt.MinCost + 1, auth.PasswordCost} {
+		svc, err := NewService(nil, nil, nil, nil, nil, nil, cost)
+		require.NoError(t, err)
+		got, err := bcrypt.Cost([]byte(svc.dummyHash))
+		require.NoError(t, err)
+		require.Equal(t, cost, got)
+	}
+}
+
+func TestNewServiceRejectsAnImpossibleCost(t *testing.T) {
+	_, err := NewService(nil, nil, nil, nil, nil, nil, bcrypt.MaxCost+1)
+	require.Error(t, err)
 }
