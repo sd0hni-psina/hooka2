@@ -44,7 +44,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	pool, err := store.NewPool(ctx, cfg.DatabaseURL)
+	pool, err := store.NewPool(ctx, cfg.DatabaseURL, cfg.DBMaxConns)
 	if err != nil {
 		return err
 	}
@@ -87,8 +87,11 @@ func run(cfg config.Config, log *slog.Logger) error {
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpx.Chain(router, httpx.RequestID, httpx.Recover(log), httpx.Logger(log), httpx.CORS(cfg.CORSOrigins)),
+		Handler:           httpx.Chain(router, httpx.RequestID, httpx.Recover(log), httpx.Logger(log), httpx.CORS(cfg.CORSOrigins), httpx.ClientIP(cfg.TrustProxy)),
 		ReadHeaderTimeout: 10 * time.Second,
+		// No ReadTimeout: it is not proven to leave upgraded WebSocket
+		// connections alone, tech.md section 19.16.
+		IdleTimeout: 120 * time.Second,
 	}
 
 	var wg sync.WaitGroup

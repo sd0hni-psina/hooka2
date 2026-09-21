@@ -28,7 +28,7 @@ func run() error {
 		return errors.New("refusing to reset a prod database")
 	}
 	ctx := context.Background()
-	pool, err := store.NewPool(ctx, cfg.DatabaseURL)
+	pool, err := store.NewPool(ctx, cfg.DatabaseURL, cfg.DBMaxConns)
 	if err != nil {
 		return err
 	}

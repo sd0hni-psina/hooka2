@@ -22,7 +22,10 @@ import (
 	"hookah/server/migrations"
 )
 
-const templateDB = "hookah_template"
+const (
+	templateDB   = "hookah_template"
+	testMaxConns = 10
+)
 
 // Open returns a pool on a new database with all migrations applied. The test
 // is skipped when TEST_DATABASE_URL is empty.
@@ -49,7 +52,7 @@ func Open(t testing.TB) *pgxpool.Pool {
 		t.Fatalf("create test database: %v", err)
 	}
 
-	pool, err := store.NewPool(ctx, withDB(t, base, name))
+	pool, err := store.NewPool(ctx, withDB(t, base, name), testMaxConns)
 	if err != nil {
 		t.Fatalf("open pool: %v", err)
 	}
