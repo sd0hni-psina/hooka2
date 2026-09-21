@@ -99,7 +99,7 @@ export default function JoinScreen() {
       {message ? <Toast message={message} tone="danger" /> : null}
       {mode === 'code' ? (
         <View style={styles.form}>
-          <CodeInput length={4} value={code} onChange={setCode} autoFocus />
+          <CodeInput length={6} value={code} onChange={setCode} autoFocus />
           {fields.code ? (
             <Text variant="label" color="danger">
               {fields.code}

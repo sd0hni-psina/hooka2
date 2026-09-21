@@ -87,7 +87,7 @@ export default function KitchenSink() {
         <NumberField value={num} onChange={setNum} min={2} max={60} step={1} suffix="мин" />
       </Section>
       <Section title="CodeInput">
-        <CodeInput length={4} value={code} onChange={setCode} />
+        <CodeInput length={6} value={code} onChange={setCode} />
       </Section>
       <Section title="Card + Countdown">
         {statusList.map((s) => (

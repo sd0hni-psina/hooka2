@@ -5,7 +5,7 @@ import { Text } from './Text';
 import { color, hit, radius, space } from './tokens';
 import { t } from '../i18n/ru';
 
-type Props = { length: 4; value: string; onChange: (v: string) => void; autoFocus?: boolean };
+type Props = { length: 6; value: string; onChange: (v: string) => void; autoFocus?: boolean };
 
 // One hidden input drives the cells, so paste and backspace behave natively.
 export function CodeInput({ length, value, onChange, autoFocus }: Props) {
@@ -33,9 +33,10 @@ export function CodeInput({ length, value, onChange, autoFocus }: Props) {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', gap: space[3], justifyContent: 'center' },
+  row: { flexDirection: 'row', gap: space[2], justifyContent: 'center' },
   cell: {
-    width: hit.min + space[3],
+    flex: 1,
+    maxWidth: hit.min + space[3],
     height: hit.min + space[5],
     borderRadius: radius.md,
     borderWidth: 1,

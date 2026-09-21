@@ -45,7 +45,7 @@ export const t = {
     modeCode: 'Код',
     modeLogin: 'Вход',
     modeRegister: 'Регистрация',
-    codeHint: 'Код из 4 цифр выдаёт администратор заведения',
+    codeHint: 'Код из 6 цифр выдаёт администратор заведения',
     name: 'Ваше имя',
     namePlaceholder: 'Например, Ерлан',
     submit: 'Войти',
