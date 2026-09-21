@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -107,10 +108,15 @@ type JoinResult struct {
 	Halls  []domain.Hall `json:"halls"`
 }
 
-// Join signs a master in by venue code, tech.md sections 8, 19.1 and 19.4.
-// A wrong code is recorded before the error returns, so the attempt counts
-// toward the rate limit.
-func (s *Service) Join(ctx context.Context, in domain.JoinInput) (JoinResult, error) {
+// Join signs a master in by venue code, tech.md sections 8, 19.1, 19.4 and
+// 19.16. A wrong code is recorded before the error returns, so the attempt
+// counts toward the limits of its device, its address and the service.
+//
+// The device and the address are locked, in that order, so parallel requests
+// of one client cannot pass the check before the first one is recorded. The
+// service budget takes no lock of its own: a lock shared by every join would
+// queue all clients behind one, and the overshoot is bounded by the pool size.
+func (s *Service) Join(ctx context.Context, in domain.JoinInput, ip netip.Addr) (JoinResult, error) {
 	in, err := domain.ValidateJoin(in)
 	if err != nil {
 		return JoinResult{}, err
@@ -120,14 +126,27 @@ func (s *Service) Join(ctx context.Context, in domain.JoinInput) (JoinResult, er
 	var res JoinResult
 	var outcome error
 	err = store.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
-		if err := s.repo.LockDevice(ctx, tx, in.DeviceID); err != nil {
+		if err := store.LockKey(ctx, tx, "join:"+in.DeviceID); err != nil {
 			return err
 		}
-		attempts, err := s.repo.RecentAttempts(ctx, tx, in.DeviceID, now.Add(-time.Hour))
-		if err != nil {
+		since := now.Add(-time.Hour)
+		var attempts domain.JoinAttempts
+		var err error
+		if attempts.Device, err = s.repo.RecentAttempts(ctx, tx, in.DeviceID, since); err != nil {
 			return err
 		}
-		if retry, limited := domain.JoinRetryAfter(attempts, now); limited {
+		if ip.IsValid() {
+			if err := store.LockKey(ctx, tx, "join-ip:"+ip.String()); err != nil {
+				return err
+			}
+			if attempts.IP, err = s.repo.RecentIPAttempts(ctx, tx, ip, since); err != nil {
+				return err
+			}
+		}
+		if attempts.Failed, err = s.repo.RecentFailedAttempts(ctx, tx, since); err != nil {
+			return err
+		}
+		if retry, limited := domain.JoinDecision(attempts, now); limited {
 			outcome = &domain.RateLimitError{RetryAfterSec: retry}
 			return nil
 		}
@@ -136,7 +155,7 @@ func (s *Service) Join(ctx context.Context, in domain.JoinInput) (JoinResult, er
 		if err != nil {
 			return err
 		}
-		if err := s.repo.RecordAttempt(ctx, tx, in.DeviceID, in.Code, found, now); err != nil {
+		if err := s.repo.RecordAttempt(ctx, tx, in.DeviceID, in.Code, found, ip, now); err != nil {
 			return err
 		}
 		if !found {

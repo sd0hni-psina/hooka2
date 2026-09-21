@@ -46,6 +46,8 @@ type Env struct {
 }
 
 // New builds the full API on a fresh database. withSeed loads the fixture.
+// The server trusts X-Forwarded-For like the prod deploy behind Caddy, so a
+// test picks its client address with that header.
 func New(t *testing.T, withSeed bool) *Env {
 	t.Helper()
 	pool := storetest.Open(t)
@@ -75,7 +77,7 @@ func New(t *testing.T, withSeed bool) *Env {
 	hookah.NewHandler(hookahSvc).Register(router)
 	realtime.NewHandler(hub, guard, hookah.Snapshots{Svc: hookahSvc}, nil, log).Register(router)
 
-	srv := httptest.NewServer(httpx.Chain(router, httpx.RequestID, httpx.Recover(log)))
+	srv := httptest.NewServer(httpx.Chain(router, httpx.RequestID, httpx.Recover(log), httpx.ClientIP(true)))
 	t.Cleanup(srv.Close)
 	return &Env{T: t, Pool: pool, Srv: srv, Tokens: tokens, Hub: hub, Hookah: hookahSvc, Fx: fx}
 }

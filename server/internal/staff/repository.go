@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -197,14 +198,6 @@ func (Repository) SetPushToken(ctx context.Context, q store.Querier, sessionID, 
 	return nil
 }
 
-// LockDevice serializes join attempts of one device for the transaction.
-func (Repository) LockDevice(ctx context.Context, q store.Querier, deviceID string) error {
-	if _, err := q.Exec(ctx, `select pg_advisory_xact_lock(hashtextextended($1, 0))`, "join:"+deviceID); err != nil {
-		return fmt.Errorf("lock device: %w", err)
-	}
-	return nil
-}
-
 func (Repository) RecentAttempts(ctx context.Context, q store.Querier, deviceID string, since time.Time) ([]time.Time, error) {
 	rows, err := q.Query(ctx,
 		`select created_at from join_attempts where device_id = $1 and created_at > $2`, deviceID, since)
@@ -218,10 +211,44 @@ func (Repository) RecentAttempts(ctx context.Context, q store.Querier, deviceID 
 	return out, nil
 }
 
-func (Repository) RecordAttempt(ctx context.Context, q store.Querier, deviceID, code string, success bool, now time.Time) error {
+// RecentIPAttempts lists the attempts from one address. Rows written before
+// addresses were stored have none and never match.
+func (Repository) RecentIPAttempts(ctx context.Context, q store.Querier, ip netip.Addr, since time.Time) ([]time.Time, error) {
+	rows, err := q.Query(ctx,
+		`select created_at from join_attempts where ip = $1 and created_at > $2`, ip, since)
+	if err != nil {
+		return nil, fmt.Errorf("recent ip attempts: %w", err)
+	}
+	out, err := pgx.CollectRows(rows, pgx.RowTo[time.Time])
+	if err != nil {
+		return nil, fmt.Errorf("recent ip attempts: %w", err)
+	}
+	return out, nil
+}
+
+// RecentFailedAttempts lists the wrong codes of every device and address.
+func (Repository) RecentFailedAttempts(ctx context.Context, q store.Querier, since time.Time) ([]time.Time, error) {
+	rows, err := q.Query(ctx,
+		`select created_at from join_attempts where not success and created_at > $1`, since)
+	if err != nil {
+		return nil, fmt.Errorf("recent failed attempts: %w", err)
+	}
+	out, err := pgx.CollectRows(rows, pgx.RowTo[time.Time])
+	if err != nil {
+		return nil, fmt.Errorf("recent failed attempts: %w", err)
+	}
+	return out, nil
+}
+
+// RecordAttempt stores one attempt. An invalid ip is stored as null.
+func (Repository) RecordAttempt(ctx context.Context, q store.Querier, deviceID, code string, success bool, ip netip.Addr, now time.Time) error {
+	var ipArg any
+	if ip.IsValid() {
+		ipArg = ip
+	}
 	if _, err := q.Exec(ctx,
-		`insert into join_attempts (device_id, code, success, created_at) values ($1, $2, $3, $4)`,
-		deviceID, code, success, now); err != nil {
+		`insert into join_attempts (device_id, code, success, ip, created_at) values ($1, $2, $3, $4, $5)`,
+		deviceID, code, success, ipArg, now); err != nil {
 		return fmt.Errorf("record attempt: %w", err)
 	}
 	return nil

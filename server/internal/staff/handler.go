@@ -61,7 +61,7 @@ func (h *Handler) join(w http.ResponseWriter, r *http.Request) error {
 	res, err := h.svc.Join(r.Context(), domain.JoinInput{
 		Code: req.Code, DisplayName: req.DisplayName,
 		Device: domain.Device{DeviceID: req.DeviceID, Platform: req.Platform},
-	})
+	}, httpx.ClientIPFrom(r.Context()))
 	if err != nil {
 		return err
 	}

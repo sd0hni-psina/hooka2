@@ -37,6 +37,16 @@ func WithTx(ctx context.Context, pool *pgxpool.Pool, fn func(tx pgx.Tx) error) e
 	return nil
 }
 
+// LockKey blocks until no other transaction holds key, then holds it until
+// this transaction ends. Limits use it so a check and the write that follows
+// it cannot interleave with a parallel request for the same key.
+func LockKey(ctx context.Context, q Querier, key string) error {
+	if _, err := q.Exec(ctx, `select pg_advisory_xact_lock(hashtextextended($1, 0))`, key); err != nil {
+		return fmt.Errorf("lock %q: %w", key, err)
+	}
+	return nil
+}
+
 // IsUniqueViolation reports whether err violates the named unique index.
 func IsUniqueViolation(err error, constraint string) bool {
 	var pgErr *pgconn.PgError
