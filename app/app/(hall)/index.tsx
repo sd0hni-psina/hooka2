@@ -2,15 +2,13 @@ import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
 
-import * as Crypto from 'expo-crypto';
-
-import { claimEvent, startHookah } from '../../src/api/endpoints';
-import { explain } from '../../src/api/errors';
+import { claimEvent } from '../../src/api/endpoints';
 import type { Table } from '../../src/api/types';
 import { ConnectionBar } from '../../src/features/hall/ConnectionBar';
 import { ProfileSheet } from '../../src/features/hall/ProfileSheet';
 import { TableList } from '../../src/features/hall/TableList';
 import { TableQuickSheet } from '../../src/features/hall/TableQuickSheet';
+import { useStartHookah } from '../../src/features/hookah/useStartHookah';
 import { TaskRow } from '../../src/features/tasks/TaskRow';
 import { useTaskActions } from '../../src/features/tasks/useTaskActions';
 import { t } from '../../src/i18n/ru';
@@ -34,6 +32,7 @@ export default function HallScreen() {
   const connection = useHallStore((s) => s.connection);
   const stale = useHallStore((s) => s.stale);
   const actions = useTaskActions();
+  const { start } = useStartHookah();
 
   const second = useServerNow();
   const minute = useServerNow('minute');
@@ -41,7 +40,7 @@ export default function HallScreen() {
   const [mode, setMode] = useState<Mode>('map');
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
-  const [starting, setStarting] = useState<{ table: Table; key: string } | null>(null);
+  const [starting, setStarting] = useState<Table | null>(null);
   const [quick, setQuick] = useState<Table | null>(null);
   const [showProfile, setShowProfile] = useState(false);
 
@@ -98,18 +97,14 @@ export default function HallScreen() {
       return;
     }
     if (frozen) return;
-    setStarting({ table, key: Crypto.randomUUID() });
+    setStarting(table);
   };
 
-  const confirmStart = async () => {
+  const confirmStart = () => {
     if (!starting) return;
-    const { table, key } = starting;
+    const table = starting;
     setStarting(null);
-    try {
-      await startHookah(table.id, key);
-    } catch (e) {
-      toast({ key: 'start', message: explain(e), tone: 'danger' });
-    }
+    void start(table);
   };
 
   const hall = me?.halls.find((h) => h.id === state?.hall.id) ?? null;
@@ -222,16 +217,16 @@ export default function HallScreen() {
         status={quick ? (statuses[quick.id] ?? 'free') : 'free'}
         disabled={frozen}
         onClose={() => setQuick(null)}
-        onStart={(table) => setStarting({ table, key: Crypto.randomUUID() })}
+        onStart={setStarting}
       />
 
       <ConfirmDialog
         visible={starting !== null}
         title={t.table.startConfirm}
-        message={starting ? t.table.startMessage(starting.table.label) : ''}
+        message={starting ? t.table.startMessage(starting.label) : ''}
         confirmTitle={t.table.start}
         onCancel={() => setStarting(null)}
-        onConfirm={() => void confirmStart()}
+        onConfirm={confirmStart}
       />
     </Screen>
   );

@@ -2,11 +2,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import * as Crypto from 'expo-crypto';
-
-import { finishHookah, startHookah, transferHookah } from '../../../src/api/endpoints';
+import { finishHookah, transferHookah } from '../../../src/api/endpoints';
 import { explain } from '../../../src/api/errors';
 import type { FinishReason, ServiceEvent } from '../../../src/api/types';
+import { useStartHookah } from '../../../src/features/hookah/useStartHookah';
 import { useTaskActions } from '../../../src/features/tasks/useTaskActions';
 import { t } from '../../../src/i18n/ru';
 import { useHallStore } from '../../../src/store/hall';
@@ -75,6 +74,7 @@ export default function TableScreen() {
   const stale = useHallStore((s) => s.stale);
   const now = useServerNow();
   const actions = useTaskActions();
+  const { start, starting } = useStartHookah();
   const frozen = connection !== 'online' || stale;
 
   const data = useMemo(() => ({ state, pending }), [state, pending]);
@@ -125,7 +125,7 @@ export default function TableScreen() {
             <Button title={t.table.finish} variant="danger" size="md" icon="stop" loading={busy} disabled={frozen} onPress={() => setShowFinish(true)} />
           </>
         ) : (
-          <Button title={t.table.start} variant="primary" size="lg" icon="flame" loading={busy} disabled={frozen} onPress={() => setConfirmStart(true)} />
+          <Button title={t.table.start} variant="primary" size="lg" icon="flame" loading={busy || starting} disabled={frozen} onPress={() => setConfirmStart(true)} />
         )
       }
     >
@@ -184,8 +184,7 @@ export default function TableScreen() {
         onCancel={() => setConfirmStart(false)}
         onConfirm={() => {
           setConfirmStart(false);
-          const key = Crypto.randomUUID();
-          void run(() => startHookah(table.id, key));
+          void start(table);
         }}
       />
 
