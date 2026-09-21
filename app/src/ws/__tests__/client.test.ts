@@ -252,6 +252,32 @@ describe('return from background', () => {
     expect(types(s.sockets[0]!)).toEqual(['subscribe']);
   });
 
+  it('does not vouch for the hall between the return and the fresh snapshot', async () => {
+    const s = setup();
+    await open(s);
+    s.sockets[0]!.receive(snapshotFrame());
+    s.statuses.length = 0;
+
+    s.client.resume();
+    // Two minutes of sleep are behind the screen: until the snapshot lands the
+    // link is "connecting", not "online".
+    expect(s.statuses).toEqual(['connecting']);
+    s.sockets[0]!.receive(snapshotFrame());
+    expect(s.statuses).toEqual(['connecting', 'online']);
+  });
+
+  it('listens again after stop and start following a 1008', async () => {
+    const s = setup();
+    await open(s);
+    s.sockets[0]!.serverClose(1008);
+    s.client.stop();
+    s.client.start();
+    await flush();
+    s.sockets[1]!.serverClose(1006);
+    await s.advance(2_000);
+    expect(s.sockets).toHaveLength(3);
+  });
+
   it('replaces a socket that stays silent for 3 seconds after resume, without a backoff', async () => {
     const s = setup();
     await open(s);

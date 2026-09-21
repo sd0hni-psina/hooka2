@@ -74,6 +74,7 @@ export class WsClient {
   start(): void {
     if (!this.stopped) return;
     this.stopped = false;
+    this.revoked = false;
     void this.open();
   }
 
@@ -102,6 +103,8 @@ export class WsClient {
       this.retryTimer = null;
     }
     if (this.sock) {
+      // The screen may be minutes old: say so until the snapshot lands.
+      this.d.onStatus('connecting');
       this.sendSubscribe();
       this.armProbe();
       return;
@@ -186,6 +189,9 @@ export class WsClient {
       // The backoff restarts on a snapshot, not on open: a socket the server
       // opens and closes at once with 1011 must keep growing its pause.
       this.attempt = 0;
+      // The link is live again once the hall is fresh. Repeating online after
+      // a plain subscribe is harmless: the store ignores a repeat.
+      this.d.onStatus('online');
       if (this.subscribeSentAt !== null) {
         syncFromServer(msg.state.server_time, this.subscribeSentAt, received);
         this.subscribeSentAt = null;
