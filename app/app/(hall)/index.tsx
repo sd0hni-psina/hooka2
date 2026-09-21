@@ -1,216 +1,236 @@
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { FlatList, StyleSheet, View } from 'react-native';
 
 import * as Crypto from 'expo-crypto';
 
 import { claimEvent, startHookah } from '../../src/api/endpoints';
+import { explain } from '../../src/api/errors';
 import type { Table } from '../../src/api/types';
-import { formatDuration } from '../../src/domain/countdown';
-import { describeError } from '../../src/features/join/form';
+import { ConnectionBar } from '../../src/features/hall/ConnectionBar';
+import { ProfileSheet } from '../../src/features/hall/ProfileSheet';
+import { TableList } from '../../src/features/hall/TableList';
+import { TableQuickSheet } from '../../src/features/hall/TableQuickSheet';
+import { TaskRow } from '../../src/features/tasks/TaskRow';
+import { useTaskActions } from '../../src/features/tasks/useTaskActions';
 import { t } from '../../src/i18n/ru';
 import { useAuthStore } from '../../src/store/auth';
 import { useHallStore } from '../../src/store/hall';
-import { hookahByTable, selectTasks, statusesAt } from '../../src/store/selectors';
+import { hookahByTable, progressAt, selectTasks, statusesAt, tableLabels } from '../../src/store/selectors';
 import {
-  AppBar, Badge, Button, Card, ConfirmDialog, EmptyState, HallCanvas, Icon, IconButton, ListRow, Screen, Sheet,
-  Spinner, Text, Toast, useServerNow,
+  AppBar, Badge, ConfirmDialog, EmptyState, HallCanvas, IconButton, Screen, SearchField, Skeleton, Text, toast,
+  useServerNow,
 } from '../../src/ui';
 import { space } from '../../src/ui/tokens';
 
-function ConnectionBadge() {
-  const connection = useHallStore((s) => s.connection);
-  if (connection === 'online') return <Badge title={t.hall.online} tone="green" icon="check" />;
-  if (connection === 'offline') return <Badge title={t.hall.offline} tone="red" icon="wifi-off" />;
-  return <Badge title={t.hall.connecting} tone="neutral" icon="refresh" />;
-}
+type Mode = 'map' | 'list';
 
 export default function HallScreen() {
   const router = useRouter();
   const me = useAuthStore((s) => s.me);
-  const data = useHallStore((s) => s);
-  const now = useServerNow();
-  const [pending, setPending] = useState<{ table: Table; key: string } | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [showProfile, setShowProfile] = useState(false);
-  const [confirmLogout, setConfirmLogout] = useState(false);
-  // v1 has no offline queue, so mutations wait for the socket, tech.md section 19.11.
-  const offline = data.connection !== 'online';
+  const state = useHallStore((s) => s.state);
+  const pending = useHallStore((s) => s.pending);
+  const banner = useHallStore((s) => s.banner);
+  const connection = useHallStore((s) => s.connection);
+  const stale = useHallStore((s) => s.stale);
+  const actions = useTaskActions();
 
-  const statuses = useMemo(() => statusesAt(data, now), [data, now]);
+  const second = useServerNow();
+  const minute = useServerNow('minute');
+
+  const [mode, setMode] = useState<Mode>('map');
+  const [query, setQuery] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [starting, setStarting] = useState<{ table: Table; key: string } | null>(null);
+  const [quick, setQuick] = useState<Table | null>(null);
+  const [showProfile, setShowProfile] = useState(false);
+
+  // Cached data may lie, so it blocks mutations exactly like a dead socket,
+  // tech.md section 19.15.
+  const frozen = connection !== 'online' || stale;
+
+  const data = useMemo(() => ({ state, pending }), [state, pending]);
+  const statuses = useMemo(() => statusesAt(data, second), [data, second]);
   const byTable = useMemo(() => hookahByTable(data), [data]);
-  const tasks = useMemo(() => selectTasks(data, now), [data, now]);
-  // A table shows who took its task, otherwise how long the hookah runs.
-  const badges = useMemo(() => {
-    const out: Record<string, string> = {};
-    for (const [tableId, h] of byTable) {
-      const claimed = h.events.find((e) => e.state === 'due' && e.claimed_by_name);
-      out[tableId] = claimed?.claimed_by_name ?? formatDuration(now - Date.parse(h.started_at));
-    }
-    return out;
-  }, [byTable, now]);
+  const labels = useMemo(() => tableLabels(data, minute), [data, minute]);
+  const progress = useMemo(() => progressAt(data, minute), [data, minute]);
+  const tasks = useMemo(() => selectTasks(data, second), [data, second]);
+  const tables = useMemo(() => state?.tables ?? [], [state]);
+
+  const urgentIds = useMemo(
+    () => new Set(Object.entries(statuses).filter(([, s]) => s === 'red').map(([id]) => id)),
+    [statuses],
+  );
+
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return null;
+    return tables.filter((table) => table.label.toLowerCase().includes(q));
+  }, [query, tables]);
+
+  const dimIds = useMemo(() => {
+    if (!matches) return undefined;
+    const keep = new Set(matches.map((table) => table.id));
+    return new Set(tables.filter((table) => !keep.has(table.id)).map((table) => table.id));
+  }, [matches, tables]);
+
+  // A single match is what the master meant: the canvas flies to it.
+  const focusId = matches?.length === 1 ? (matches[0]?.id ?? null) : null;
+
+  // The fired task speaks once, over the screen, and offers to take itself.
+  useEffect(() => {
+    if (!banner) return;
+    toast({
+      key: banner.eventId,
+      message: t.tasks.banner(banner.tableLabel, banner.title),
+      tone: 'warning',
+      ttlMs: 8000,
+      actionTitle: t.tasks.claim,
+      onAction: () => void claimEvent(banner.eventId).catch(() => undefined),
+    });
+    useHallStore.getState().dismissBanner();
+  }, [banner]);
 
   const openTable = (table: Table) => {
-    if (offline) return;
     const hookah = byTable.get(table.id);
     if (hookah) {
       router.push({ pathname: '/table/[id]', params: { id: table.id } });
       return;
     }
-    setMessage(null);
-    setPending({ table, key: Crypto.randomUUID() });
+    if (frozen) return;
+    setStarting({ table, key: Crypto.randomUUID() });
   };
 
   const confirmStart = async () => {
-    if (!pending) return;
-    const { table, key } = pending;
-    setPending(null);
+    if (!starting) return;
+    const { table, key } = starting;
+    setStarting(null);
     try {
       await startHookah(table.id, key);
     } catch (e) {
-      const d = describeError(e);
-      setMessage(d.message ?? Object.values(d.fields)[0] ?? t.errors.unknown);
+      toast({ key: 'start', message: explain(e), tone: 'danger' });
     }
   };
 
-  const hall = me?.halls.find((h) => h.id === data.hallId);
-  const manager = me?.staff.role !== 'master';
+  const hall = me?.halls.find((h) => h.id === state?.hall.id) ?? null;
+  const busy = byTable.size;
 
   return (
     <Screen>
       <AppBar
-        title={hall?.name ?? t.appName}
-        subtitle={me?.venue.name}
-        left={<ConnectionBadge />}
+        title={hall?.name ?? state?.hall.name ?? t.appName}
+        subtitle={tables.length > 0 ? t.hall.counters(busy, tables.length) : me?.venue.name}
+        left={<IconButton icon="user" accessibilityLabel={t.profile.title} onPress={() => setShowProfile(true)} />}
         right={
           <View style={styles.bar}>
-            {manager ? <IconButton icon="settings" accessibilityLabel={t.settings.title} onPress={() => router.push('/settings')} /> : null}
-            <IconButton icon="user" accessibilityLabel={t.profile.title} onPress={() => setShowProfile(true)} />
+            <IconButton
+              icon="search"
+              variant={searching ? 'filled' : 'plain'}
+              accessibilityLabel={t.hall.search}
+              onPress={() => {
+                setSearching((v) => !v);
+                setQuery('');
+              }}
+            />
+            <IconButton
+              icon={mode === 'map' ? 'list' : 'map'}
+              accessibilityLabel={mode === 'map' ? t.hall.modeList : t.hall.modeMap}
+              onPress={() => setMode((m) => (m === 'map' ? 'list' : 'map'))}
+            />
           </View>
         }
       />
-      {offline ? <Toast message={t.hall.offline} tone="danger" /> : null}
-      {message ? <Toast message={message} tone="danger" /> : null}
-      {data.banner && !offline ? (
-        <Toast
-          message={t.tasks.banner(data.banner.tableLabel, data.banner.title)}
-          tone="warning"
-          actionTitle={t.tasks.claim}
-          onAction={() => {
-            const eventId = data.banner?.eventId;
-            useHallStore.getState().dismissBanner();
-            if (eventId) void claimEvent(eventId).catch(() => undefined);
-          }}
-        />
+
+      <ConnectionBar />
+
+      {searching ? (
+        <SearchField value={query} onChange={setQuery} placeholder={t.hall.search} keyboardType="number-pad" autoFocus />
       ) : null}
 
       {tasks.length > 0 ? (
         <View style={styles.strip}>
-          <Text variant="label" color="textMuted">
-            {t.tasks.strip}
-          </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stripRow}>
-            {tasks.slice(0, 6).map((task) => (
-              <View key={task.event.id} style={styles.taskCard}>
-                <Card status={statuses[task.table.id]} onPress={() => router.push({ pathname: '/table/[id]', params: { id: task.table.id } })}>
-                  <Text variant="h2">{t.table.title(task.table.label)}</Text>
-                  <Text variant="label" color="textMuted" numberOfLines={2}>
-                    {task.event.title}
-                  </Text>
-                  <Badge
-                    title={`${task.overdueMs >= 0 ? t.tasks.overdue : t.tasks.soon} ${formatDuration(Math.abs(task.overdueMs))}`}
-                    tone={task.overdueMs >= 0 ? 'red' : 'yellow'}
-                    icon="clock"
-                  />
-                </Card>
-              </View>
-            ))}
-          </ScrollView>
+          <View style={styles.stripHead}>
+            <Text variant="label" color="textMuted">
+              {t.tasks.strip}
+            </Text>
+            <Badge title={String(tasks.length)} tone={tasks[0] && tasks[0].overdueMs >= 0 ? 'red' : 'yellow'} />
+          </View>
+          <FlatList
+            horizontal
+            data={tasks.slice(0, 8)}
+            keyExtractor={(task) => task.event.id}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.stripRow}
+            renderItem={({ item }) => (
+              <TaskRow
+                task={item}
+                variant="card"
+                onOpen={() => router.push({ pathname: '/table/[id]', params: { id: item.table.id } })}
+                onClaim={() => actions.claim(item.event.id)}
+                onConfirm={() => actions.confirm(item.event.id)}
+              />
+            )}
+          />
         </View>
       ) : null}
 
-      {data.state ? (
-        <HallCanvas fill tables={data.state.tables} statuses={statuses} badges={badges} onTablePress={openTable} />
+      {state ? (
+        mode === 'map' ? (
+          <HallCanvas
+            fill
+            tables={tables}
+            statuses={statuses}
+            labels={labels}
+            progress={progress}
+            urgentIds={urgentIds}
+            dimIds={dimIds}
+            focusId={focusId}
+            onTablePress={openTable}
+            onTableLongPress={setQuick}
+          />
+        ) : (
+          <View style={styles.fill}>
+            <TableList
+              tables={matches ?? tables}
+              statuses={statuses}
+              hookahs={byTable}
+              onPress={openTable}
+              onLongPress={setQuick}
+            />
+          </View>
+        )
       ) : me && me.halls.length === 0 ? (
         <View style={styles.fill}>
           <EmptyState icon="grid" title={t.hall.noHalls} message={t.hall.noHallsHint} />
         </View>
       ) : (
-        <View style={[styles.fill, styles.center]}>
-          <Spinner size="large" />
-          <Text variant="label" color="textMuted">
+        <View style={styles.loading}>
+          <Skeleton height={64} />
+          <Skeleton height={64} />
+          <Skeleton height={220} radius="lg" />
+          <Text variant="label" color="textMuted" align="center">
             {t.hall.loading}
           </Text>
         </View>
       )}
 
-      <Sheet
-        visible={showProfile}
-        onClose={() => setShowProfile(false)}
-        title={t.profile.title}
-        footer={
-          <Button
-            title={t.logout.action}
-            variant="danger"
-            size="lg"
-            icon="close"
-            onPress={() => {
-              setShowProfile(false);
-              setConfirmLogout(true);
-            }}
-          />
-        }
-      >
-        <ListRow title={me?.staff.display_name ?? ''} subtitle={me ? t.staff.role[me.staff.role] : undefined} />
-        {manager ? (
-          <ListRow
-            title={t.settings.title}
-            right={<Icon name="chevron-right" color="textMuted" />}
-            onPress={() => {
-              setShowProfile(false);
-              router.push('/settings');
-            }}
-          />
-        ) : (
-          <Text variant="label" color="textMuted">
-            {t.profile.onlyManagers}
-          </Text>
-        )}
-        <Text variant="label" color="textMuted">
-          {t.profile.hall}
-        </Text>
-        {(me?.halls ?? []).map((h) => (
-          <ListRow
-            key={h.id}
-            title={h.name}
-            right={h.id === data.hallId ? <Badge title={t.ui.chosen} tone="green" icon="check" /> : undefined}
-            onPress={() => {
-              setShowProfile(false);
-              void useAuthStore.getState().selectHall(h.id);
-            }}
-          />
-        ))}
-      </Sheet>
+      <ProfileSheet visible={showProfile} onClose={() => setShowProfile(false)} />
 
-      <ConfirmDialog
-        visible={confirmLogout}
-        title={t.logout.title}
-        message={t.logout.message}
-        confirmTitle={t.logout.action}
-        destructive
-        onCancel={() => setConfirmLogout(false)}
-        onConfirm={() => {
-          setConfirmLogout(false);
-          void useAuthStore.getState().signOut();
-        }}
+      <TableQuickSheet
+        table={quick}
+        hookah={quick ? (byTable.get(quick.id) ?? null) : null}
+        status={quick ? (statuses[quick.id] ?? 'free') : 'free'}
+        disabled={frozen}
+        onClose={() => setQuick(null)}
+        onStart={(table) => setStarting({ table, key: Crypto.randomUUID() })}
       />
 
       <ConfirmDialog
-        visible={pending !== null}
+        visible={starting !== null}
         title={t.table.startConfirm}
-        message={pending ? t.table.startMessage(pending.table.label) : ''}
+        message={starting ? t.table.startMessage(starting.table.label) : ''}
         confirmTitle={t.table.start}
-        onCancel={() => setPending(null)}
+        onCancel={() => setStarting(null)}
         onConfirm={() => void confirmStart()}
       />
     </Screen>
@@ -220,8 +240,8 @@ export default function HallScreen() {
 const styles = StyleSheet.create({
   bar: { flexDirection: 'row', alignItems: 'center' },
   strip: { gap: space[2] },
+  stripHead: { flexDirection: 'row', alignItems: 'center', gap: space[2] },
   stripRow: { gap: space[3], paddingRight: space[4] },
-  taskCard: { width: 220 },
-  center: { alignItems: 'center', justifyContent: 'center', gap: space[3] },
+  loading: { flex: 1, gap: space[3] },
   fill: { flex: 1 },
 });

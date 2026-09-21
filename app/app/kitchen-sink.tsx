@@ -6,7 +6,8 @@ import Svg from 'react-native-svg';
 import type { Table, TableStatus } from '../src/api/types';
 import {
   AppBar, Badge, Button, Card, CodeInput, ConfirmDialog, Countdown, EmptyState, HallCanvas, IconButton, Input,
-  ListRow, NumberField, Screen, SegmentedControl, Sheet, Spinner, TableShape, Text, Toast, statusStyle,
+  ListRow, NumberField, ProgressRing, Screen, SearchField, SegmentedControl, Sheet, Skeleton, Spinner, Stat,
+  Switch, TableShape, Text, Toast, statusStyle, toast,
 } from '../src/ui';
 import { space } from '../src/ui/tokens';
 import { serverNow } from '../src/ws/clock';
@@ -38,6 +39,7 @@ export default function KitchenSink() {
   const [code, setCode] = useState('12');
   const [num, setNum] = useState(15);
   const [seg, setSeg] = useState<'hall' | 'tasks'>('hall');
+  const [toggle, setToggle] = useState(true);
   const [sheet, setSheet] = useState(false);
   const [dialog, setDialog] = useState(false);
   const [started] = useState(() => new Date(serverNow() - 17 * 60_000).toISOString());
@@ -136,7 +138,7 @@ export default function KitchenSink() {
               table={{ id: s, hall_id: 'h', label: String(i + 1), shape: i % 2 ? 'circle' : 'rect', x: 4 + i * 24, y: 2, w: 18, h: 18, rotation: 0, seats: 4 }}
               status={s}
               label={String(i + 1)}
-              badge={s === 'yellow' ? 'Ерлан' : undefined}
+              sublabel={s === 'yellow' ? 'Ерлан' : undefined}
               selected={s === 'green'}
               onPress={() => undefined}
             />
@@ -162,6 +164,42 @@ export default function KitchenSink() {
         <Toast message="Нет связи" tone="danger" />
         <Toast message="Сохранено" tone="success" />
         <Toast message="Подсказка" tone="neutral" />
+      </Section>
+      <Section title="ProgressRing">
+        <View style={styles.row}>
+          {statusList.filter((x) => x !== 'free').map((x, i) => (
+            <ProgressRing key={x} progress={(i + 1) / 3} status={x} size={92}>
+              <Text variant="mono" color={statusStyle[x].color}>{`${Math.round(((i + 1) / 3) * 100)}%`}</Text>
+            </ProgressRing>
+          ))}
+        </View>
+      </Section>
+      <Section title="Stat">
+        <View style={styles.row}>
+          <Stat label="Время кальяна" value="42:17" status="green" hint="Поставил Ерлан" />
+          <Stat label="До конца ресурса" value="17:43" />
+        </View>
+      </Section>
+      <Section title="Skeleton">
+        <Skeleton height={48} />
+        <Skeleton height={96} radius="lg" />
+      </Section>
+      <Section title="Switch">
+        <View style={styles.row}>
+          <Switch value={toggle} onChange={setToggle} accessibilityLabel="Переключатель" />
+          <Text variant="body">{toggle ? 'Включено' : 'Выключено'}</Text>
+        </View>
+      </Section>
+      <Section title="SearchField">
+        <SearchField value={text} onChange={setText} placeholder="Номер стола" keyboardType="number-pad" />
+      </Section>
+      <Section title="ToastHost">
+        <Button
+          title="Показать сообщение"
+          variant="secondary"
+          size="md"
+          onPress={() => toast({ message: 'Стол 15: стряхните угли', tone: 'warning', actionTitle: 'Беру', onAction: () => undefined })}
+        />
       </Section>
       <Section title="EmptyState">
         <EmptyState icon="list" title="Задач нет" message="Всё под контролем" actionTitle="Обновить" onAction={() => undefined} />

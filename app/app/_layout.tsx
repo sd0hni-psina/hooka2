@@ -10,7 +10,7 @@ import * as Notifications from 'expo-notifications';
 import { registerPush } from '../src/features/notifications/registerPush';
 import { actionFor, parseTarget, registerCategory, runAction } from '../src/features/notifications/service';
 import { useAuthStore } from '../src/store/auth';
-import { Spinner } from '../src/ui';
+import { Spinner, ToastHost } from '../src/ui';
 import { color } from '../src/ui/tokens';
 
 // Auth guard, tech.md section 19.2: no session goes to join, a session goes to the hall.
@@ -74,12 +74,15 @@ export default function RootLayout() {
             <Spinner size="large" />
           </View>
         ) : (
-          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.bg } }}>
-            <Stack.Screen name="(hall)" />
-            <Stack.Screen name="join" />
-            <Stack.Screen name="settings" />
-            <Stack.Screen name="kitchen-sink" />
-          </Stack>
+          <>
+            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.bg } }}>
+              <Stack.Screen name="(hall)" />
+              <Stack.Screen name="join" />
+              <Stack.Screen name="settings" />
+              <Stack.Screen name="kitchen-sink" />
+            </Stack>
+            <ToastHost />
+          </>
         )}
       </SafeAreaProvider>
     </GestureHandlerRootView>

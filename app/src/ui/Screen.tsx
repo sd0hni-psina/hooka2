@@ -29,5 +29,5 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: color.bg },
   fill: { flex: 1 },
   content: { padding: space[4], gap: space[4] },
-  footer: { padding: space[4], gap: space[3], borderTopWidth: 1, borderTopColor: color.border, backgroundColor: color.surface },
+  footer: { padding: space[4], gap: space[3], borderTopWidth: 1, borderTopColor: color.border, backgroundColor: color.bg },
 });

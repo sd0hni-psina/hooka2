@@ -24,4 +24,8 @@ module.exports = defineConfig([
     files: ['src/ws/clock.ts'],
     rules: { 'no-restricted-syntax': 'off' },
   },
+  {
+    files: ['jest.setup.js'],
+    languageOptions: { globals: { jest: 'readonly', require: 'readonly' } },
+  },
 ]);

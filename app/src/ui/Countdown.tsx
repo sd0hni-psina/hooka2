@@ -1,8 +1,9 @@
 import type { TableStatus } from '../api/types';
-import { countdownMs, formatDuration, type CountdownMode } from '../domain/countdown';
-import { statusStyle } from './status';
-import { Text } from './Text';
+import { countdownMs, formatDuration, formatShort, type CountdownMode } from '../domain/countdown';
+import { Text, type TextVariant } from './Text';
+import { tone } from './tokens';
 import { useServerNow } from './useServerNow';
+import type { Granularity } from '../ws/ticker';
 
 type Props = {
   target: string;
@@ -10,14 +11,19 @@ type Props = {
   from?: string;
   mode: CountdownMode;
   status?: TableStatus;
+  variant?: Extract<TextVariant, 'display' | 'mono' | 'label'>;
+  // granularity 'minute' keeps a slow counter from waking the screen every
+  // second, tech.md section 19.15.
+  granularity?: Granularity;
 };
 
-export function Countdown({ target, from, mode, status }: Props) {
-  const live = useServerNow();
+export function Countdown({ target, from, mode, status, variant = 'mono', granularity = 'second' }: Props) {
+  const live = useServerNow(granularity);
   const now = from ? Date.parse(from) : live;
+  const ms = countdownMs(target, mode, now);
   return (
-    <Text variant="mono" color={status ? statusStyle[status].color : 'text'}>
-      {formatDuration(countdownMs(target, mode, now))}
+    <Text variant={variant} color={status ? tone[status].fg : 'text'}>
+      {granularity === 'minute' ? formatShort(ms) : formatDuration(ms)}
     </Text>
   );
 }
