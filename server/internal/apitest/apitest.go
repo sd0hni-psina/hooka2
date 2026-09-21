@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -40,8 +41,28 @@ const (
 	RefreshTTL = 90 * 24 * time.Hour
 )
 
+// logBuffer collects the server log so a test can look for what must not be
+// in it. Handlers log from their own goroutines, hence the mutex.
+type logBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (l *logBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.Write(p)
+}
+
+func (l *logBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.String()
+}
+
 type Env struct {
 	T      *testing.T
+	logs   *logBuffer
 	Pool   *pgxpool.Pool
 	Srv    *httptest.Server
 	Tokens *auth.Tokens
@@ -62,7 +83,8 @@ func New(t *testing.T, withSeed bool) *Env {
 		fx, err = seed.Seed(context.Background(), pool)
 		require.NoError(t, err)
 	}
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logs := &logBuffer{}
+	log := slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	hub := realtime.NewHub(log)
 	venueRepo, layoutRepo, staffRepo := venue.NewRepository(), layout.NewRepository(), staff.NewRepository()
@@ -83,10 +105,13 @@ func New(t *testing.T, withSeed bool) *Env {
 	hookah.NewHandler(hookahSvc).Register(router)
 	realtime.NewHandler(hub, guard, hookah.Snapshots{Svc: hookahSvc}, nil, log).Register(router)
 
-	srv := httptest.NewServer(httpx.Chain(router, httpx.RequestID, httpx.Recover(log), httpx.ClientIP(true)))
+	srv := httptest.NewServer(httpx.Chain(router, httpx.RequestID, httpx.Recover(log), httpx.Logger(log), httpx.ClientIP(true)))
 	t.Cleanup(srv.Close)
-	return &Env{T: t, Pool: pool, Srv: srv, Tokens: tokens, Hub: hub, Hookah: hookahSvc, Fx: fx}
+	return &Env{T: t, logs: logs, Pool: pool, Srv: srv, Tokens: tokens, Hub: hub, Hookah: hookahSvc, Fx: fx}
 }
+
+// LogText returns everything the server logged so far, at debug level.
+func (e *Env) LogText() string { return e.logs.String() }
 
 // TokenFor signs an access token for a seeded member.
 func (e *Env) TokenFor(m seed.Member) string {
