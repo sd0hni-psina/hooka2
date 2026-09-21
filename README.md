@@ -6,7 +6,7 @@
 
 ## Что нужно на машине
 
-- Go (версия из `server/go.mod`), Node 20 и новее, Docker Desktop.
+- Go (версия из `server/go.mod`), Node 22 (как в CI), Docker Desktop.
 - Телефон с Expo Go для быстрой проверки или dev-сборка для пушей.
 
 ## Запуск локально
