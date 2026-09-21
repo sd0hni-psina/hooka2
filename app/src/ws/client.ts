@@ -3,12 +3,20 @@ import { localClock, syncFromServer } from './clock';
 import { reconnectDelay } from './reconnect';
 
 const PING_EVERY_MS = 20_000;
+// The server answers every ping, so a live socket cannot stay quiet for the
+// span of two pings and a margin, tech.md section 19.17.
+const SILENCE_LIMIT_MS = 45_000;
+// After the app returns from background the socket must speak within this
+// span or it is replaced.
+const RESUME_PROBE_MS = 3_000;
+// The server closes with this code when the session is revoked or blocked.
+const CLOSE_POLICY = 1008;
 
 export type WsStatus = 'connecting' | 'online' | 'offline';
 
 type SocketLike = {
   onopen: (() => void) | null;
-  onclose: (() => void) | null;
+  onclose: ((e: { code?: number }) => void) | null;
   onerror: (() => void) | null;
   onmessage: ((e: { data: unknown }) => void) | null;
   send: (data: string) => void;
@@ -20,6 +28,9 @@ export type WsDeps = {
   url: () => Promise<string | null>;
   onMessage: (msg: ParsedMessage) => boolean | void;
   onStatus: (s: WsStatus) => void;
+  // onRevoked fires when the server closed the socket with 1008. The client
+  // stays closed: the app checks the session and decides.
+  onRevoked?: () => void;
   socket?: (url: string) => SocketLike;
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (t: unknown) => void;
@@ -27,7 +38,8 @@ export type WsDeps = {
 };
 
 // WsClient keeps one connection alive: reconnects with backoff, pings every
-// 20 s, subscribes after each open and whenever onMessage asks to resync.
+// 20 s, drops a socket that went silent, subscribes after each open and
+// whenever onMessage asks to resync.
 export class WsClient {
   private sock: SocketLike | null = null;
   private hallId: string | null = null;
@@ -37,10 +49,20 @@ export class WsClient {
   private pingTimer: unknown = null;
   private pingSentAt: number | null = null;
   private subscribeSentAt: number | null = null;
+  private watchdogTimer: unknown = null;
+  private probeTimer: unknown = null;
+  private lastFrameAt = 0;
+  // frames counts every frame received, so a probe can tell that the socket
+  // spoke without reading the clock.
+  private frames = 0;
+  private opening = false;
+  // revoked keeps the client quiet after a 1008 until the app returns.
+  private revoked = false;
   private readonly d: Required<WsDeps>;
 
   constructor(deps: WsDeps) {
     this.d = {
+      onRevoked: () => undefined,
       socket: (url) => new WebSocket(url) as unknown as SocketLike,
       setTimer: (fn, ms) => setTimeout(fn, ms),
       clearTimer: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
@@ -68,8 +90,12 @@ export class WsClient {
   // backoff. The app returning from background calls it: a master who
   // unlocks the phone must not read a hall from two minutes ago,
   // tech.md section 19.15.
+  //
+  // A socket that looks alive after a long sleep may be dead without a FIN, so
+  // it gets a subscribe and a few seconds to answer before it is replaced.
   resume(): void {
     if (this.stopped) return;
+    this.revoked = false;
     this.attempt = 0;
     if (this.retryTimer !== null) {
       this.d.clearTimer(this.retryTimer);
@@ -77,6 +103,7 @@ export class WsClient {
     }
     if (this.sock) {
       this.sendSubscribe();
+      this.armProbe();
       return;
     }
     void this.open();
@@ -88,40 +115,56 @@ export class WsClient {
   }
 
   private async open(): Promise<void> {
-    if (this.stopped) return;
-    this.d.onStatus('connecting');
+    // A second open while the url is still resolving would leave two live sockets.
+    if (this.stopped || this.opening) return;
+    this.opening = true;
     let url: string | null = null;
     try {
-      url = await this.d.url();
-    } catch {
-      url = null;
+      this.d.onStatus('connecting');
+      try {
+        url = await this.d.url();
+      } catch {
+        url = null;
+      }
+      if (this.stopped) return;
+      if (!url) {
+        this.scheduleReconnect();
+        return;
+      }
+      const s = this.d.socket(url);
+      this.sock = s;
+      // A socket that never opens is as silent as one that died: the clock
+      // starts at creation.
+      this.lastFrameAt = localClock();
+      this.armWatchdog();
+      s.onopen = () => {
+        if (this.sock !== s) return;
+        this.d.onStatus('online');
+        this.sendSubscribe();
+        this.ping();
+      };
+      s.onmessage = (e) => {
+        if (this.sock !== s || typeof e.data !== 'string') return;
+        this.frames += 1;
+        this.lastFrameAt = localClock();
+        this.handle(e.data);
+      };
+      s.onerror = () => s.close();
+      s.onclose = (e) => {
+        if (this.sock !== s) return;
+        this.sock = null;
+        this.clearTimers();
+        this.d.onStatus('offline');
+        if (e?.code === CLOSE_POLICY) {
+          this.revoked = true;
+          this.d.onRevoked();
+          return;
+        }
+        this.scheduleReconnect();
+      };
+    } finally {
+      this.opening = false;
     }
-    if (this.stopped) return;
-    if (!url) {
-      this.scheduleReconnect();
-      return;
-    }
-    const s = this.d.socket(url);
-    this.sock = s;
-    s.onopen = () => {
-      if (this.sock !== s) return;
-      this.attempt = 0;
-      this.d.onStatus('online');
-      this.sendSubscribe();
-      this.ping();
-    };
-    s.onmessage = (e) => {
-      if (this.sock !== s || typeof e.data !== 'string') return;
-      this.handle(e.data);
-    };
-    s.onerror = () => s.close();
-    s.onclose = () => {
-      if (this.sock !== s) return;
-      this.sock = null;
-      this.clearTimers();
-      this.d.onStatus('offline');
-      this.scheduleReconnect();
-    };
   }
 
   private handle(raw: string): void {
@@ -139,9 +182,14 @@ export class WsClient {
       syncFromServer(msg.serverTime, this.pingSentAt, received);
       this.pingSentAt = null;
     }
-    if (msg.kind === 'snapshot' && this.subscribeSentAt !== null) {
-      syncFromServer(msg.state.server_time, this.subscribeSentAt, received);
-      this.subscribeSentAt = null;
+    if (msg.kind === 'snapshot') {
+      // The backoff restarts on a snapshot, not on open: a socket the server
+      // opens and closes at once with 1011 must keep growing its pause.
+      this.attempt = 0;
+      if (this.subscribeSentAt !== null) {
+        syncFromServer(msg.state.server_time, this.subscribeSentAt, received);
+        this.subscribeSentAt = null;
+      }
     }
     if (this.d.onMessage(msg) === true) this.sendSubscribe();
   }
@@ -166,8 +214,51 @@ export class WsClient {
     }
   }
 
+  // armWatchdog sleeps until the silence limit would run out. Frames move
+  // lastFrameAt only, so the timer checks and sleeps again instead of being
+  // reset on every message.
+  private armWatchdog(): void {
+    if (this.watchdogTimer !== null) this.d.clearTimer(this.watchdogTimer);
+    const wait = Math.min(SILENCE_LIMIT_MS, Math.max(0, this.lastFrameAt + SILENCE_LIMIT_MS - localClock()));
+    this.watchdogTimer = this.d.setTimer(() => {
+      this.watchdogTimer = null;
+      if (localClock() - this.lastFrameAt >= SILENCE_LIMIT_MS) this.dropSocket(false);
+      else this.armWatchdog();
+    }, wait);
+  }
+
+  private armProbe(): void {
+    if (this.probeTimer !== null) this.d.clearTimer(this.probeTimer);
+    const seen = this.frames;
+    this.probeTimer = this.d.setTimer(() => {
+      this.probeTimer = null;
+      if (this.frames === seen) this.dropSocket(true);
+    }, RESUME_PROBE_MS);
+  }
+
+  // dropSocket abandons a socket that stopped answering. It does not wait for
+  // onclose: without a FIN the event may never come, and the late one is
+  // ignored because this.sock no longer points at it.
+  private dropSocket(immediately: boolean): void {
+    const dead = this.sock;
+    this.sock = null;
+    this.clearTimers();
+    try {
+      dead?.close();
+    } catch {
+      // Closing a broken socket may throw; it is abandoned either way.
+    }
+    this.d.onStatus('offline');
+    if (immediately) {
+      this.attempt = 0;
+      void this.open();
+      return;
+    }
+    this.scheduleReconnect();
+  }
+
   private scheduleReconnect(): void {
-    if (this.stopped) return;
+    if (this.stopped || this.revoked) return;
     const delay = reconnectDelay(this.attempt, this.d.random);
     this.attempt += 1;
     this.retryTimer = this.d.setTimer(() => {
@@ -177,9 +268,12 @@ export class WsClient {
   }
 
   private clearTimers(): void {
-    if (this.pingTimer !== null) this.d.clearTimer(this.pingTimer);
-    if (this.retryTimer !== null) this.d.clearTimer(this.retryTimer);
+    for (const t of [this.pingTimer, this.retryTimer, this.watchdogTimer, this.probeTimer]) {
+      if (t !== null) this.d.clearTimer(t);
+    }
     this.pingTimer = null;
     this.retryTimer = null;
+    this.watchdogTimer = null;
+    this.probeTimer = null;
   }
 }
