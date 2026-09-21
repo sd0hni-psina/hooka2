@@ -86,22 +86,25 @@ type StartInput struct {
 	IdempotencyKey string
 }
 
-// Insert creates the hookah. occupied is true when the table already holds a
-// live one; repeated is true when the idempotency key was used before.
-func (Repository) Insert(ctx context.Context, q store.Querier, in StartInput) (id string, occupied, repeated bool, err error) {
+// Insert creates the hookah. inserted is false when a unique index refused it:
+// the table already holds a live hookah, or the idempotency key was used
+// before. The caller tells the two apart by looking the key up. Skipping the
+// row with ON CONFLICT keeps the transaction usable, a raised unique violation
+// would abort it and the lookup that follows would fail with SQLSTATE 25P02.
+func (Repository) Insert(ctx context.Context, q store.Querier, in StartInput) (id string, inserted bool, err error) {
 	err = q.QueryRow(ctx,
 		`insert into hookahs (venue_id, hall_id, table_id, state, started_at, expires_at, plan_snapshot, started_by, idempotency_key)
-		 values ($1, $2, $3, 'active', $4, $5, $6, $7, $8) returning id`,
+		 values ($1, $2, $3, 'active', $4, $5, $6, $7, $8)
+		 on conflict do nothing
+		 returning id`,
 		in.VenueID, in.HallID, in.TableID, in.StartedAt, in.ExpiresAt, in.Plan, in.StartedBy, in.IdempotencyKey).Scan(&id)
-	switch {
-	case store.IsUniqueViolation(err, "hookahs_active_table_key"):
-		return "", true, false, nil
-	case store.IsUniqueViolation(err, "hookahs_idempotency_key"):
-		return "", false, true, nil
-	case err != nil:
-		return "", false, false, fmt.Errorf("insert hookah: %w", err)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, nil
 	}
-	return id, false, false, nil
+	if err != nil {
+		return "", false, fmt.Errorf("insert hookah: %w", err)
+	}
+	return id, true, nil
 }
 
 // InsertEvents writes the materialized plan of a hookah.
