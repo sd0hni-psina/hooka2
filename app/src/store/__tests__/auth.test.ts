@@ -1,5 +1,6 @@
 // jest.mock is hoisted above the imports by babel-jest.
 import { getMe } from '../../api/endpoints';
+import { clearSession, loadHallId, saveHallId, saveSession } from '../../api/session';
 import { __setLocalClockForTests } from '../../ws/clock';
 import { useAuthStore } from '../auth';
 
@@ -92,6 +93,67 @@ describe('auth store', () => {
     expect(useAuthStore.getState().session).toBeNull();
   });
 
+  describe('a failed refresh', () => {
+    const forbidden = () => json(403, { error: { code: 'forbidden', message: 'x' } });
+    const refreshAnswers = (answer: () => Response) =>
+      mockServer((c) => (c.url.endsWith('/auth/refresh') ? answer() : unauthorized()));
+
+    it.each([
+      ['unauthorized', unauthorized],
+      ['forbidden', forbidden],
+    ])('ends the session on %s', async (_name, answer) => {
+      refreshAnswers(answer);
+      await expect(useAuthStore.getState().refreshSession()).resolves.toBe(false);
+      expect(useAuthStore.getState().session).toBeNull();
+      expect(useAuthStore.getState().status).toBe('signedOut');
+    });
+
+    it.each([
+      ['500', () => json(500, { error: { code: 'internal', message: 'x' } })],
+      ['502 from the proxy during a deploy', () => json(502, null)],
+    ])('keeps the session on %s', async (_name, answer) => {
+      refreshAnswers(answer);
+      await expect(useAuthStore.getState().refreshSession()).rejects.toBeDefined();
+      expect(useAuthStore.getState().session?.refresh_token).toBe('r1');
+      expect(useAuthStore.getState().status).toBe('signedIn');
+    });
+
+    it('keeps the session when the network is down', async () => {
+      globalThis.fetch = jest.fn(async () => {
+        throw new Error('offline');
+      }) as unknown as typeof fetch;
+      await expect(useAuthStore.getState().refreshSession()).rejects.toBeDefined();
+      expect(useAuthStore.getState().session?.refresh_token).toBe('r1');
+    });
+
+    it('keeps the session when an expired access meets a proxy error on refresh', async () => {
+      // The common cold start after 30 minutes away: /me answers 401, the
+      // refresh behind it answers 502. The master stays signed in.
+      refreshAnswers(() => json(502, null));
+      await useAuthStore.getState().refreshMe();
+      expect(useAuthStore.getState().session?.refresh_token).toBe('r1');
+      expect(useAuthStore.getState().error).not.toBeNull();
+    });
+
+    it('sends the token it has when refreshing ahead of expiry fails', async () => {
+      useAuthStore.setState({ session: session('old-access', 'r1', 30_000) });
+      const calls = mockServer((c) => (c.url.endsWith('/auth/refresh') ? json(502, null) : json(200, me)));
+      await expect(getMe()).resolves.toEqual(me);
+      expect(calls[calls.length - 1]!.auth).toBe('Bearer old-access');
+    });
+  });
+
+  it.each([
+    ['unauthorized', 401],
+    ['forbidden', 403],
+  ])('signs out when /me answers %s after the socket closed with 1008', async (code, status) => {
+    // The revoked or blocked master: the WS hook asks /me and lets the answer decide.
+    mockServer(() => json(status, { error: { code, message: 'x' } }));
+    await useAuthStore.getState().refreshMe();
+    expect(useAuthStore.getState().status).toBe('signedOut');
+    expect(useAuthStore.getState().session).toBeNull();
+  });
+
   it('forgets a saved hall that no longer exists', async () => {
     useAuthStore.setState({ hallId: 'gone' });
     mockServer(() => json(200, me));
@@ -100,3 +162,73 @@ describe('auth store', () => {
     expect(useAuthStore.getState().status).toBe('signedIn');
   });
 });
+
+describe('cold start', () => {
+  const offline = () => {
+    globalThis.fetch = jest.fn(async () => {
+      throw new Error('Network request failed');
+    }) as unknown as typeof fetch;
+  };
+
+  beforeEach(async () => {
+    await clearSession();
+    await saveSession(session('saved-access', 'r1', 20 * 60_000));
+    await saveHallId('h1');
+    useAuthStore.setState({ status: 'loading', session: null, me: null, hallId: null, error: null });
+  });
+
+  it('opens the hall from the saved session when the network is down', async () => {
+    offline();
+    await useAuthStore.getState().bootstrap();
+    const s = useAuthStore.getState();
+    expect(s.status).toBe('signedIn');
+    expect(s.session?.refresh_token).toBe('r1');
+    expect(s.hallId).toBe('h1');
+    expect(s.me).toBeNull();
+  });
+
+  it('opens the hall when the server answers 502 during a deploy', async () => {
+    mockServer(() => json(502, null));
+    await useAuthStore.getState().bootstrap();
+    expect(useAuthStore.getState().status).toBe('signedIn');
+    expect(useAuthStore.getState().session).not.toBeNull();
+  });
+
+  it('opens the hall before /me answers, so a dead network costs no spinner', async () => {
+    globalThis.fetch = jest.fn(() => new Promise<Response>(() => undefined)) as unknown as typeof fetch;
+    void useAuthStore.getState().bootstrap();
+    await new Promise<void>((r) => setImmediate(() => r()));
+    expect(useAuthStore.getState().status).toBe('signedIn');
+    expect(useAuthStore.getState().hallId).toBe('h1');
+  });
+
+  it('goes to sign in when there is no saved session', async () => {
+    await clearSession();
+    offline();
+    await useAuthStore.getState().bootstrap();
+    expect(useAuthStore.getState().status).toBe('signedOut');
+  });
+
+  it.each([
+    ['unauthorized', 401],
+    ['forbidden', 403],
+  ])('signs out when the server says %s', async (code, status) => {
+    mockServer(() => json(status, { error: { code, message: 'x' } }));
+    await useAuthStore.getState().bootstrap();
+    expect(useAuthStore.getState().status).toBe('signedOut');
+    expect(await loadHallId()).toBeNull();
+  });
+
+  it('loads /me once the network returns, and only when it is missing', async () => {
+    offline();
+    await useAuthStore.getState().bootstrap();
+    const calls = mockServer(() => json(200, me));
+    await useAuthStore.getState().ensureMe();
+    expect(useAuthStore.getState().me).toEqual(me);
+    expect(calls).toHaveLength(1);
+
+    await useAuthStore.getState().ensureMe();
+    expect(calls).toHaveLength(1);
+  });
+});
+

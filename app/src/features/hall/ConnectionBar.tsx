@@ -1,9 +1,9 @@
 import { StyleSheet, View } from 'react-native';
 
-import { t } from '../../i18n/ru';
 import { useHallStore } from '../../store/hall';
 import { Badge } from '../../ui';
 import { space } from '../../ui/tokens';
+import { connectionLine } from './connectionLine';
 
 // One line that answers: can I trust what I see, and did my last tap land.
 export function ConnectionBar() {
@@ -16,15 +16,9 @@ export function ConnectionBar() {
 
   return (
     <View style={styles.row}>
-      {connection === 'online' ? (
-        <Badge title={t.hall.online} tone="green" icon="check" />
-      ) : connection === 'offline' ? (
-        <Badge title={t.hall.offline} tone="red" icon="wifi-off" />
-      ) : (
-        <Badge title={t.hall.connecting} tone="neutral" icon="refresh" />
-      )}
-      {stale && time ? <Badge title={t.hall.stale(time)} tone="yellow" icon="clockOff" /> : null}
-      {queued > 0 ? <Badge title={t.hall.queued(queued)} tone="accent" icon="refresh" /> : null}
+      {connectionLine({ connection, stale, time, queued }).map((line) => (
+        <Badge key={line.key} title={line.title} tone={line.tone} icon={line.icon} />
+      ))}
     </View>
   );
 }

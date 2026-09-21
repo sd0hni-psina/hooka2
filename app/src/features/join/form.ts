@@ -8,7 +8,7 @@ const reasons = t.fields;
 // sees mistakes before the request.
 export function validateJoin(code: string, name: string): FieldErrors {
   const e: FieldErrors = {};
-  if (!/^\d{4}$/.test(code)) e.code = reasons.invalid;
+  if (!/^\d{6}$/.test(code)) e.code = reasons.invalid;
   const n = name.trim();
   if (n.length === 0) e.display_name = reasons.required;
   else if ([...n].length > 40) e.display_name = reasons.too_long;

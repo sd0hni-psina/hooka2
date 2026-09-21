@@ -24,7 +24,9 @@ export const apiBase = `${apiUrl}/api/v1`;
 
 // AuthProvider is implemented by the auth store. access() returns a token
 // that is fresh enough to send; refresh() rotates it after a 401 and reports
-// whether a new one is available.
+// whether a new one is available. refresh() rejects when the server could not
+// be asked, and request lets that error through: a proxy error must not read
+// as "your session is over".
 export type AuthProvider = {
   access: () => Promise<string | null>;
   refresh: () => Promise<boolean>;
