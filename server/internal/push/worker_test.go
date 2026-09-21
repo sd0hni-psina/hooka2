@@ -77,6 +77,87 @@ func (e env) count(t *testing.T, tail string, args ...any) int {
 	return n
 }
 
+// closeEvent turns the seeded due task into the state a master or the
+// scheduler leaves it in.
+func (e env) closeEvent(t *testing.T, how string) {
+	t.Helper()
+	switch how {
+	case "confirmed":
+		e.exec(t, `update service_events set state = 'confirmed', confirmed_at = now(), confirmed_by = $2 where id = $1`, e.eventID, e.fx.Masters[0].StaffID)
+	case "missed":
+		e.exec(t, `update service_events set state = 'missed' where id = $1`, e.eventID)
+	case "finished hookah":
+		e.exec(t, `update hookahs set state = 'finished', finished_at = now() where id = $1`, e.fx.BusyHookahID)
+	default:
+		t.Fatalf("unknown way to close an event: %s", how)
+	}
+}
+
+func TestWorkerCancelsPushesOfClosedEvents(t *testing.T) {
+	for _, how := range []string{"confirmed", "missed", "finished hookah"} {
+		t.Run("a queued push of a "+how+" task is cancelled, not sent", func(t *testing.T) {
+			e := setup(t)
+			id := e.queue(t, e.fx.Masters[0].SessionID, ptr("ExponentPushToken[abc]"))
+			e.closeEvent(t, how)
+
+			_, err := e.worker.RunOnce(context.Background())
+			require.NoError(t, err)
+			require.Empty(t, e.fake.Sent())
+			status, _ := e.status(t, id)
+			require.Equal(t, "cancelled", status)
+
+			n, err := e.worker.RunOnce(context.Background())
+			require.NoError(t, err)
+			require.Zero(t, n, "a cancelled row is final")
+		})
+	}
+
+	t.Run("a transport retry of a task confirmed meanwhile is cancelled", func(t *testing.T) {
+		e := setup(t)
+		id := e.queue(t, e.fx.Masters[0].SessionID, ptr("ExponentPushToken[abc]"))
+		e.fake.Next = append(e.fake.Next, func([]push.Message) ([]push.Result, error) { return nil, errors.New("expo 500") })
+		_, err := e.worker.RunOnce(context.Background())
+		require.NoError(t, err)
+		status, _ := e.status(t, id)
+		require.Equal(t, "queued", status)
+		require.Len(t, e.fake.Sent(), 1)
+
+		e.closeEvent(t, "confirmed")
+		e.exec(t, `update push_deliveries set retry_at = now() - interval '1 second' where id = $1`, id)
+		_, err = e.worker.RunOnce(context.Background())
+		require.NoError(t, err)
+		status, _ = e.status(t, id)
+		require.Equal(t, "cancelled", status)
+		require.Len(t, e.fake.Sent(), 1, "no second send after the confirmation")
+		_, retryAt := e.retries(t, id)
+		require.Nil(t, retryAt)
+	})
+
+	t.Run("an open task in the same batch is still sent", func(t *testing.T) {
+		e := setup(t)
+		closed := e.queue(t, e.fx.Masters[0].SessionID, ptr("ExponentPushToken[abc]"))
+		e.exec(t, `update service_events set state = 'confirmed', confirmed_at = now() where id = $1`, e.eventID)
+		var otherEvent string
+		require.NoError(t, e.pool.QueryRow(context.Background(),
+			`select id from service_events where hookah_id = $1 and state = 'pending' order by seq limit 1`, e.fx.BusyHookahID).Scan(&otherEvent))
+		e.exec(t, `update service_events set state = 'due', fired_at = now() where id = $1`, otherEvent)
+		e.exec(t, `update staff_sessions set expo_push_token = 'ExponentPushToken[def]' where id = $1`, e.fx.Masters[1].SessionID)
+		var open string
+		require.NoError(t, e.pool.QueryRow(context.Background(),
+			`insert into push_deliveries (service_event_id, session_id, attempt, status) values ($1, $2, 1, 'queued') returning id`,
+			otherEvent, e.fx.Masters[1].SessionID).Scan(&open))
+
+		_, err := e.worker.RunOnce(context.Background())
+		require.NoError(t, err)
+		require.Len(t, e.fake.Sent(), 1)
+		require.Equal(t, otherEvent, e.fake.Sent()[0].Data.EventID)
+		status, _ := e.status(t, closed)
+		require.Equal(t, "cancelled", status)
+		status, _ = e.status(t, open)
+		require.Equal(t, "sent", status)
+	})
+}
+
 func TestWorker(t *testing.T) {
 	t.Run("fake sender marks the queued delivery sent with a valid payload", func(t *testing.T) {
 		e := setup(t)

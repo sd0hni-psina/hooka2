@@ -31,6 +31,7 @@ const (
 	StatusSent         Status = "sent"
 	StatusFailed       Status = "failed"
 	StatusInvalidToken Status = "invalid_token"
+	StatusCancelled    Status = "cancelled"
 )
 
 // Result is the outcome of one message, in the order of the input.
