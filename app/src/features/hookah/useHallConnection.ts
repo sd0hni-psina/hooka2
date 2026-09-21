@@ -26,7 +26,12 @@ export function useHallConnection(hallId: string | null) {
         return token ? wsUrl(token) : null;
       },
       onMessage: (msg) => useHallStore.getState().apply(msg),
-      onStatus: (s) => useHallStore.getState().setConnection(s),
+      onStatus: (s) => {
+        useHallStore.getState().setConnection(s);
+        // A cold start without network left /me empty; the first live socket
+        // proves the server is reachable.
+        if (s === 'online') void useAuthStore.getState().ensureMe();
+      },
       // Close code 1008 means the session was revoked or the master blocked.
       // /me tells which: 401 and 403 sign out, anything else leaves the socket
       // closed until the app returns to the foreground, tech.md section 19.17.

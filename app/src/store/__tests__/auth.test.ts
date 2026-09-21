@@ -1,5 +1,6 @@
 // jest.mock is hoisted above the imports by babel-jest.
 import { getMe } from '../../api/endpoints';
+import { clearSession, loadHallId, saveHallId, saveSession } from '../../api/session';
 import { __setLocalClockForTests } from '../../ws/clock';
 import { useAuthStore } from '../auth';
 
@@ -161,3 +162,73 @@ describe('auth store', () => {
     expect(useAuthStore.getState().status).toBe('signedIn');
   });
 });
+
+describe('cold start', () => {
+  const offline = () => {
+    globalThis.fetch = jest.fn(async () => {
+      throw new Error('Network request failed');
+    }) as unknown as typeof fetch;
+  };
+
+  beforeEach(async () => {
+    await clearSession();
+    await saveSession(session('saved-access', 'r1', 20 * 60_000));
+    await saveHallId('h1');
+    useAuthStore.setState({ status: 'loading', session: null, me: null, hallId: null, error: null });
+  });
+
+  it('opens the hall from the saved session when the network is down', async () => {
+    offline();
+    await useAuthStore.getState().bootstrap();
+    const s = useAuthStore.getState();
+    expect(s.status).toBe('signedIn');
+    expect(s.session?.refresh_token).toBe('r1');
+    expect(s.hallId).toBe('h1');
+    expect(s.me).toBeNull();
+  });
+
+  it('opens the hall when the server answers 502 during a deploy', async () => {
+    mockServer(() => json(502, null));
+    await useAuthStore.getState().bootstrap();
+    expect(useAuthStore.getState().status).toBe('signedIn');
+    expect(useAuthStore.getState().session).not.toBeNull();
+  });
+
+  it('opens the hall before /me answers, so a dead network costs no spinner', async () => {
+    globalThis.fetch = jest.fn(() => new Promise<Response>(() => undefined)) as unknown as typeof fetch;
+    void useAuthStore.getState().bootstrap();
+    await new Promise<void>((r) => setImmediate(() => r()));
+    expect(useAuthStore.getState().status).toBe('signedIn');
+    expect(useAuthStore.getState().hallId).toBe('h1');
+  });
+
+  it('goes to sign in when there is no saved session', async () => {
+    await clearSession();
+    offline();
+    await useAuthStore.getState().bootstrap();
+    expect(useAuthStore.getState().status).toBe('signedOut');
+  });
+
+  it.each([
+    ['unauthorized', 401],
+    ['forbidden', 403],
+  ])('signs out when the server says %s', async (code, status) => {
+    mockServer(() => json(status, { error: { code, message: 'x' } }));
+    await useAuthStore.getState().bootstrap();
+    expect(useAuthStore.getState().status).toBe('signedOut');
+    expect(await loadHallId()).toBeNull();
+  });
+
+  it('loads /me once the network returns, and only when it is missing', async () => {
+    offline();
+    await useAuthStore.getState().bootstrap();
+    const calls = mockServer(() => json(200, me));
+    await useAuthStore.getState().ensureMe();
+    expect(useAuthStore.getState().me).toEqual(me);
+    expect(calls).toHaveLength(1);
+
+    await useAuthStore.getState().ensureMe();
+    expect(calls).toHaveLength(1);
+  });
+});
+

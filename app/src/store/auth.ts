@@ -21,6 +21,8 @@ type AuthStore = {
   bootstrap: () => Promise<void>;
   signIn: (s: Session) => Promise<void>;
   refreshMe: () => Promise<void>;
+  // ensureMe loads /me only when a cold start left it empty.
+  ensureMe: () => Promise<void>;
   selectHall: (id: string) => Promise<void>;
   signOut: () => Promise<void>;
   accessToken: () => Promise<string | null>;
@@ -42,7 +44,10 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       set({ status: 'signedOut', session: null, me: null });
       return;
     }
-    set({ session, hallId: await loadHallId() });
+    // A saved session is a sign-in: the hall opens from the cache at once and
+    // /me catches up. Waiting for it would put a spinner in front of a dead
+    // network for the whole request timeout, tech.md section 19.17.
+    set({ session, hallId: await loadHallId(), status: 'signedIn' });
     await get().refreshMe();
   },
 
@@ -63,9 +68,14 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         await get().signOut();
         return;
       }
-      // Network trouble keeps the session: the screen shows the error and retries.
-      set({ error: e, status: get().me ? 'signedIn' : 'signedOut' });
+      // Network trouble and 5xx keep the session: the hall stays open on what
+      // the cache has, and ensureMe retries once the socket is back.
+      set({ error: e, status: get().session ? 'signedIn' : 'signedOut' });
     }
+  },
+
+  ensureMe: async () => {
+    if (get().me === null && get().session !== null) await get().refreshMe();
   },
 
   selectHall: async (id) => {
