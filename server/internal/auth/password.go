@@ -7,14 +7,27 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const bcryptCost = 10
+// PasswordCost is the bcrypt cost of new hashes, tech.md section 19.16.
+const PasswordCost = 12
 
-func HashPassword(password string) (string, error) {
-	h, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
+// HashPassword hashes at cost. Callers pass PasswordCost, tests pass a cheap
+// cost so a suite does not spend minutes in bcrypt.
+func HashPassword(password string, cost int) (string, error) {
+	h, err := bcrypt.GenerateFromPassword([]byte(password), cost)
 	if err != nil {
 		return "", fmt.Errorf("hash password: %w", err)
 	}
 	return string(h), nil
+}
+
+// NeedsRehash reports whether hash was made at a lower cost than cost, so a
+// login that just proved the password can replace it.
+func NeedsRehash(hash string, cost int) (bool, error) {
+	c, err := bcrypt.Cost([]byte(hash))
+	if err != nil {
+		return false, fmt.Errorf("hash cost: %w", err)
+	}
+	return c < cost, nil
 }
 
 // CheckPassword reports whether password matches hash. A malformed hash is an

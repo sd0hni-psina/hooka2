@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/crypto/bcrypt"
 
 	"hookah/server/internal/auth"
 	"hookah/server/internal/domain"
@@ -17,7 +18,7 @@ import (
 )
 
 const (
-	JoinCode      = "1234"
+	JoinCode      = "123456"
 	OwnerEmail    = "owner@hookah.dev"
 	OwnerPassword = "hookah-dev-pass" //nolint:gosec // public dev fixture, never used in prod
 	OwnerName     = "Арсен"
@@ -75,7 +76,7 @@ var halls = []struct {
 // Reset empties every application table. Callers guard it from production.
 func Reset(ctx context.Context, pool *pgxpool.Pool) error {
 	_, err := pool.Exec(ctx, `truncate push_deliveries, hookah_transfers, service_events, hookahs,
-		join_attempts, staff_sessions, staff, tables, halls, venues, accounts restart identity cascade`)
+		join_attempts, auth_attempts, staff_sessions, staff, tables, halls, venues, accounts restart identity cascade`)
 	if err != nil {
 		return fmt.Errorf("reset: %w", err)
 	}
@@ -104,7 +105,8 @@ func seed(ctx context.Context, tx pgx.Tx, now time.Time) (Fixture, error) {
 		return fx, err
 	}
 
-	hash, err := auth.HashPassword(OwnerPassword)
+	// A public fixture, so a cheap hash is fine. The first login upgrades it.
+	hash, err := auth.HashPassword(OwnerPassword, bcrypt.MinCost)
 	if err != nil {
 		return fx, err
 	}

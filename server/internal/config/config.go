@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -22,7 +23,12 @@ type Config struct {
 	ExpoAccessToken string
 	LogLevel        slog.Level
 	CORSOrigins     []string
+	TrustProxy      bool
+	DBMaxConns      int
 }
+
+// minProdSecretLen keeps a guessable HMAC key out of production.
+const minProdSecretLen = 32
 
 func (c Config) IsProd() bool { return c.AppEnv == "prod" }
 
@@ -74,6 +80,15 @@ func load(getenv func(string) string) (Config, error) {
 			cfg.CORSOrigins = append(cfg.CORSOrigins, strings.TrimSpace(s))
 		}
 	}
+	trust, err := strconv.ParseBool(env("TRUST_PROXY", "false"))
+	if err != nil {
+		errs = append(errs, errors.New("TRUST_PROXY: must be true or false"))
+	}
+	cfg.TrustProxy = trust
+	cfg.DBMaxConns, err = strconv.Atoi(env("DB_MAX_CONNS", "10"))
+	if err != nil || cfg.DBMaxConns < 2 || cfg.DBMaxConns > 100 {
+		errs = append(errs, errors.New("DB_MAX_CONNS: must be a number from 2 to 100"))
+	}
 	if err := cfg.LogLevel.UnmarshalText([]byte(env("LOG_LEVEL", "info"))); err != nil {
 		errs = append(errs, errors.New("LOG_LEVEL: invalid level"))
 	}
@@ -96,6 +111,9 @@ func load(getenv func(string) string) (Config, error) {
 	}
 	if prod && cfg.JWTSecret == "dev-secret-change-me" {
 		errs = append(errs, errors.New("JWT_SECRET: dev secret in prod"))
+	}
+	if prod && cfg.JWTSecret != "" && len(cfg.JWTSecret) < minProdSecretLen {
+		errs = append(errs, fmt.Errorf("JWT_SECRET: at least %d characters in prod, try openssl rand -hex 32", minProdSecretLen))
 	}
 	if cfg.PushProvider == "expo" && prod && cfg.ExpoAccessToken == "" {
 		errs = append(errs, errors.New("EXPO_ACCESS_TOKEN: required for expo provider in prod"))

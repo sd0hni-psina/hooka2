@@ -134,6 +134,19 @@ type Snapshotter interface {
 	HallState(ctx context.Context, venueID, hallID string, online []string, now time.Time) (any, error)
 }
 
+// CloseSession drops the connections of one device session, so a device that
+// signed out stops receiving events at once, tech.md section 19.16. Other
+// sessions of the same staff member stay.
+func (h *Hub) CloseSession(venueID, sessionID string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for c := range h.clients[venueID] {
+		if c.sessionID == sessionID {
+			c.evict()
+		}
+	}
+}
+
 // CloseStaff drops every connection of a staff member, so a blocked master
 // stops receiving events at once, tech.md section 19.11.
 func (h *Hub) CloseStaff(venueID, staffID string) {

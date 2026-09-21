@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"hookah/server/internal/account"
+	"hookah/server/internal/attempts"
 	"hookah/server/internal/auth"
 	"hookah/server/internal/config"
 	"hookah/server/internal/hookah"
@@ -44,7 +45,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	pool, err := store.NewPool(ctx, cfg.DatabaseURL)
+	pool, err := store.NewPool(ctx, cfg.DatabaseURL, cfg.DBMaxConns)
 	if err != nil {
 		return err
 	}
@@ -72,7 +73,10 @@ func run(cfg config.Config, log *slog.Logger) error {
 	hookahSvc := hookah.NewService(pool, hookahRepo, layoutRepo, venueRepo, staffRepo, hub)
 	venueSvc := venue.NewService(pool, venueRepo, hub)
 	layoutSvc := layout.NewService(pool, layoutRepo, hub)
-	accountSvc := account.NewService(pool, account.NewRepository(), staffRepo, staffSvc, venueRepo, venueSvc)
+	accountSvc, err := account.NewService(pool, account.NewRepository(), staffRepo, staffSvc, venueRepo, venueSvc, auth.PasswordCost)
+	if err != nil {
+		return err
+	}
 
 	guard := auth.NewGuard(tokens, staffSvc, httpx.WriteError)
 
@@ -87,8 +91,11 @@ func run(cfg config.Config, log *slog.Logger) error {
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpx.Chain(router, httpx.RequestID, httpx.Recover(log), httpx.Logger(log), httpx.CORS(cfg.CORSOrigins)),
+		Handler:           httpx.Chain(router, httpx.RequestID, httpx.Recover(log), httpx.Logger(log), httpx.CORS(cfg.CORSOrigins), httpx.ClientIP(cfg.TrustProxy)),
 		ReadHeaderTimeout: 10 * time.Second,
+		// No ReadTimeout: it is not proven to leave upgraded WebSocket
+		// connections alone, tech.md section 19.16.
+		IdleTimeout: 120 * time.Second,
 	}
 
 	var wg sync.WaitGroup
@@ -96,7 +103,10 @@ func run(cfg config.Config, log *slog.Logger) error {
 	defer cancelBG()
 	wg.Add(2)
 	pushQueue := push.NewQueue(pool, hub)
-	go func() { defer wg.Done(); scheduler.New(log, cfg.SchedulerTick, hookahSvc, pushQueue).Run(bg) }()
+	go func() {
+		defer wg.Done()
+		scheduler.New(log, cfg.SchedulerTick, hookahSvc, pushQueue, attempts.NewPurger(pool)).Run(bg)
+	}()
 	go func() { defer wg.Done(); push.NewWorker(pool, sender, log, cfg.PushTick).Run(bg) }()
 
 	errc := make(chan error, 1)

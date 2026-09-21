@@ -30,7 +30,7 @@ func TestRegister(t *testing.T) {
 		var b authBody
 		res.Decode(t, &b)
 		require.NotNil(t, b.Venue.JoinCode)
-		require.Regexp(t, regexp.MustCompile(`^\d{4}$`), *b.Venue.JoinCode)
+		require.Regexp(t, regexp.MustCompile(`^\d{6}$`), *b.Venue.JoinCode)
 		require.Equal(t, "Asia/Atyrau", b.Venue.Timezone)
 
 		var plan domain.Plan

@@ -117,6 +117,21 @@ func TestQueue(t *testing.T) {
 		require.Zero(t, next.Queued)
 	})
 
+	t.Run("a finished hookah queues nothing although its task stays due", func(t *testing.T) {
+		q := setupQueue(t)
+		res := q.env.Do("POST", "/hookahs/"+q.env.Fx.BusyHookahID+"/finish", q.env.TokenFor(q.env.Fx.Masters[0]), map[string]any{"reason": "guest_left"})
+		require.Equal(t, 200, res.Status, string(res.Raw))
+		require.Equal(t, 1, q.env.Count(`service_events where id = $1 and state = 'due'`, q.eventID), "history keeps the due task")
+
+		now := time.Now()
+		for _, at := range []time.Time{now, now, now.Add(120 * time.Second)} {
+			got, err := q.queue.Tick(context.Background(), at)
+			require.NoError(t, err)
+			require.Zero(t, got.Queued)
+		}
+		require.Zero(t, q.deliveries())
+	})
+
 	t.Run("sessions without a token or of blocked staff are skipped", func(t *testing.T) {
 		q := setupQueue(t)
 		q.env.Exec(`update staff_sessions set expo_push_token = null where id = $1`, q.env.Fx.Masters[0].SessionID)

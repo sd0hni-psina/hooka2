@@ -10,6 +10,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/bcrypt"
 
 	"hookah/server/internal/domain"
 )
@@ -70,8 +71,40 @@ func TestAccessToken(t *testing.T) {
 	})
 }
 
+func TestPasswordCostIsTwelve(t *testing.T) {
+	require.Equal(t, 12, PasswordCost, "tech.md section 19.16")
+}
+
+func TestNeedsRehash(t *testing.T) {
+	weak, err := HashPassword("correct horse", bcrypt.MinCost)
+	require.NoError(t, err)
+	cost, err := bcrypt.Cost([]byte(weak))
+	require.NoError(t, err)
+	require.Equal(t, bcrypt.MinCost, cost)
+
+	cases := []struct {
+		name   string
+		target int
+		want   bool
+	}{
+		{"a weaker hash is replaced", bcrypt.MinCost + 1, true},
+		{"a hash of the target cost stays", bcrypt.MinCost, false},
+		{"a stronger hash than the target stays", bcrypt.MinCost - 1, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := NeedsRehash(weak, c.target)
+			require.NoError(t, err)
+			require.Equal(t, c.want, got)
+		})
+	}
+
+	_, err = NeedsRehash("not-a-hash", bcrypt.MinCost)
+	require.Error(t, err)
+}
+
 func TestPassword(t *testing.T) {
-	hash, err := HashPassword("correct horse")
+	hash, err := HashPassword("correct horse", bcrypt.MinCost)
 	require.NoError(t, err)
 	require.NotContains(t, hash, "correct horse")
 

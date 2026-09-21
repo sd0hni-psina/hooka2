@@ -31,7 +31,7 @@ func NewService(pool *pgxpool.Pool, repo *Repository, hub realtime.Broadcaster) 
 }
 
 func randomCode() (string, error) {
-	n, err := rand.Int(rand.Reader, big.NewInt(10000))
+	n, err := rand.Int(rand.Reader, big.NewInt(domain.JoinCodeSpace))
 	if err != nil {
 		return "", fmt.Errorf("random code: %w", err)
 	}

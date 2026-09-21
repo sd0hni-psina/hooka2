@@ -10,11 +10,13 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/bcrypt"
 
 	"hookah/server/internal/account"
 	"hookah/server/internal/auth"
@@ -30,13 +32,37 @@ import (
 )
 
 const (
+	// PasswordCost is cheap on purpose, one above bcrypt.MinCost so a test can
+	// plant a weaker hash and watch a login upgrade it.
+	PasswordCost = bcrypt.MinCost + 1
+
 	Secret     = "test-secret"
 	AccessTTL  = 30 * time.Minute
 	RefreshTTL = 90 * 24 * time.Hour
 )
 
+// logBuffer collects the server log so a test can look for what must not be
+// in it. Handlers log from their own goroutines, hence the mutex.
+type logBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (l *logBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.Write(p)
+}
+
+func (l *logBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.String()
+}
+
 type Env struct {
 	T      *testing.T
+	logs   *logBuffer
 	Pool   *pgxpool.Pool
 	Srv    *httptest.Server
 	Tokens *auth.Tokens
@@ -46,6 +72,8 @@ type Env struct {
 }
 
 // New builds the full API on a fresh database. withSeed loads the fixture.
+// The server trusts X-Forwarded-For like the prod deploy behind Caddy, so a
+// test picks its client address with that header.
 func New(t *testing.T, withSeed bool) *Env {
 	t.Helper()
 	pool := storetest.Open(t)
@@ -55,14 +83,16 @@ func New(t *testing.T, withSeed bool) *Env {
 		fx, err = seed.Seed(context.Background(), pool)
 		require.NoError(t, err)
 	}
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logs := &logBuffer{}
+	log := slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	hub := realtime.NewHub(log)
 	venueRepo, layoutRepo, staffRepo := venue.NewRepository(), layout.NewRepository(), staff.NewRepository()
 	tokens := auth.NewTokens(Secret, AccessTTL)
 	staffSvc := staff.NewService(pool, staffRepo, venueRepo, layoutRepo, tokens, RefreshTTL, hub)
 	venueSvc := venue.NewService(pool, venueRepo, hub)
-	accountSvc := account.NewService(pool, account.NewRepository(), staffRepo, staffSvc, venueRepo, venueSvc)
+	accountSvc, err := account.NewService(pool, account.NewRepository(), staffRepo, staffSvc, venueRepo, venueSvc, PasswordCost)
+	require.NoError(t, err)
 	hookahSvc := hookah.NewService(pool, hookah.NewRepository(), layoutRepo, venueRepo, staffRepo, hub)
 	layoutSvc := layout.NewService(pool, layoutRepo, hub)
 
@@ -75,10 +105,13 @@ func New(t *testing.T, withSeed bool) *Env {
 	hookah.NewHandler(hookahSvc).Register(router)
 	realtime.NewHandler(hub, guard, hookah.Snapshots{Svc: hookahSvc}, nil, log).Register(router)
 
-	srv := httptest.NewServer(httpx.Chain(router, httpx.RequestID, httpx.Recover(log)))
+	srv := httptest.NewServer(httpx.Chain(router, httpx.RequestID, httpx.Recover(log), httpx.Logger(log), httpx.ClientIP(true)))
 	t.Cleanup(srv.Close)
-	return &Env{T: t, Pool: pool, Srv: srv, Tokens: tokens, Hub: hub, Hookah: hookahSvc, Fx: fx}
+	return &Env{T: t, logs: logs, Pool: pool, Srv: srv, Tokens: tokens, Hub: hub, Hookah: hookahSvc, Fx: fx}
 }
+
+// LogText returns everything the server logged so far, at debug level.
+func (e *Env) LogText() string { return e.logs.String() }
 
 // TokenFor signs an access token for a seeded member.
 func (e *Env) TokenFor(m seed.Member) string {

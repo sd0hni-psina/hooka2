@@ -36,7 +36,7 @@ func run() error {
 		return errors.New("devtoken runs only with APP_ENV=dev")
 	}
 	ctx := context.Background()
-	pool, err := store.NewPool(ctx, cfg.DatabaseURL)
+	pool, err := store.NewPool(ctx, cfg.DatabaseURL, cfg.DBMaxConns)
 	if err != nil {
 		return err
 	}

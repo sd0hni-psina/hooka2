@@ -47,18 +47,27 @@ func (w *Worker) Run(ctx context.Context) {
 }
 
 type delivery struct {
-	id    string
-	token *string
-	msg   Message
+	id         string
+	token      *string
+	msg        Message
+	eventState string
+	hookahDone bool
 }
 
+// closed reports that the task no longer needs a push: somebody confirmed it,
+// it was missed or its hookah ended, tech.md sections 10 and 19.16.
+func (d delivery) closed() bool { return d.eventState != "due" || d.hookahDone }
+
 // RunOnce sends one batch. Rows stay locked with SKIP LOCKED for the whole
-// send, so a second worker never picks the same delivery.
+// send, so a second worker never picks the same delivery. A row whose task was
+// closed while it waited is cancelled instead of sent, retries included. A push
+// already handed to Expo before the confirmation commits is not recalled.
 func (w *Worker) RunOnce(ctx context.Context) (int, error) {
 	var n int
 	err := store.WithTx(ctx, w.pool, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
-			select d.id, s.expo_push_token, t.label, e.title, e.id, h.id, h.table_id, h.hall_id, e.kind, e.due_at
+			select d.id, s.expo_push_token, t.label, e.title, e.id, h.id, h.table_id, h.hall_id, e.kind, e.due_at,
+			       e.state, h.state = 'finished'
 			from push_deliveries d
 			join staff_sessions s on s.id = d.session_id
 			join service_events e on e.id = d.service_event_id
@@ -75,7 +84,8 @@ func (w *Worker) RunOnce(ctx context.Context) (int, error) {
 			var d delivery
 			var label string
 			err := row.Scan(&d.id, &d.token, &label, &d.msg.Body, &d.msg.Data.EventID, &d.msg.Data.HookahID,
-				&d.msg.Data.TableID, &d.msg.Data.HallID, &d.msg.Data.Kind, &d.msg.Data.DueAt)
+				&d.msg.Data.TableID, &d.msg.Data.HallID, &d.msg.Data.Kind, &d.msg.Data.DueAt,
+				&d.eventState, &d.hookahDone)
 			d.msg.Title = "Стол " + label
 			d.msg.Sound, d.msg.Priority, d.msg.CategoryID = "default", "high", "service_action"
 			return d, err
@@ -90,6 +100,12 @@ func (w *Worker) RunOnce(ctx context.Context) (int, error) {
 
 		var send []delivery
 		for _, d := range batch {
+			if d.closed() {
+				if err := mark(ctx, tx, d.id, Result{Status: StatusCancelled, Error: "event closed"}); err != nil {
+					return err
+				}
+				continue
+			}
 			if d.token == nil {
 				if err := mark(ctx, tx, d.id, Result{Status: StatusInvalidToken, Error: "session has no push token"}); err != nil {
 					return err

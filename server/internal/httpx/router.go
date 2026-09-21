@@ -26,6 +26,7 @@ func NewRouter(guard func(http.Handler) http.Handler) *Router {
 
 func wrap(h HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, maxBody)
 		if err := h(w, r); err != nil {
 			WriteError(w, r, err)
 		}

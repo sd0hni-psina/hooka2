@@ -123,7 +123,7 @@ func TestJoin(t *testing.T) {
 
 	t.Run("wrong code is invalid_join_code", func(t *testing.T) {
 		e := apitest.New(t, true)
-		res := join(e, "9876", "Нурлан", "device-bad-1")
+		res := join(e, "987654", "Нурлан", "device-bad-1")
 		require.Equal(t, 404, res.Status)
 		require.Equal(t, "invalid_join_code", res.Code())
 	})
@@ -131,7 +131,7 @@ func TestJoin(t *testing.T) {
 	t.Run("sixth attempt within a minute is rate limited even with the right code", func(t *testing.T) {
 		e := apitest.New(t, true)
 		for i := range 4 {
-			require.Equal(t, "invalid_join_code", join(e, "9876", "Нурлан", "device-brute-1").Code(), "attempt %d", i+1)
+			require.Equal(t, "invalid_join_code", join(e, "987654", "Нурлан", "device-brute-1").Code(), "attempt %d", i+1)
 		}
 		require.Equal(t, 200, join(e, seed.JoinCode, "Нурлан", "device-brute-1").Status, "fifth attempt passes")
 		res := join(e, seed.JoinCode, "Нурлан", "device-brute-1")

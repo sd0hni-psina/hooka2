@@ -3,6 +3,9 @@ package account
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"net/netip"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -21,32 +24,90 @@ type Result struct {
 }
 
 type Service struct {
-	pool      *pgxpool.Pool
-	repo      *Repository
-	staffRepo *staff.Repository
-	staff     *staff.Service
-	venueRepo *venue.Repository
-	venues    *venue.Service
+	pool         *pgxpool.Pool
+	repo         *Repository
+	staffRepo    *staff.Repository
+	staff        *staff.Service
+	venueRepo    *venue.Repository
+	venues       *venue.Service
+	passwordCost int
+	// dummyHash is checked when the email is unknown, so the answer takes as
+	// long as for a real account. It is made at passwordCost: a fixed hash
+	// would drift from the cost the day the cost changes.
+	dummyHash string
 	now       func() time.Time
 }
 
+// NewService takes the bcrypt cost of new hashes: auth.PasswordCost in the
+// api, a cheap one in tests.
 func NewService(pool *pgxpool.Pool, repo *Repository, staffRepo *staff.Repository, staffSvc *staff.Service,
-	venueRepo *venue.Repository, venues *venue.Service) *Service {
-	return &Service{pool: pool, repo: repo, staffRepo: staffRepo, staff: staffSvc, venueRepo: venueRepo, venues: venues, now: time.Now}
+	venueRepo *venue.Repository, venues *venue.Service, passwordCost int) (*Service, error) {
+	dummy, err := auth.HashPassword("not-a-password", passwordCost)
+	if err != nil {
+		return nil, fmt.Errorf("account service: %w", err)
+	}
+	return &Service{
+		pool: pool, repo: repo, staffRepo: staffRepo, staff: staffSvc, venueRepo: venueRepo, venues: venues,
+		passwordCost: passwordCost, dummyHash: dummy, now: time.Now,
+	}, nil
+}
+
+// reserve applies the limits of tech.md section 19.16 to one login or
+// register attempt and records it as a failure. The address is locked first and
+// the email second, always in that order, so a parallel request of the same
+// client cannot pass the check before this attempt is visible. A limited
+// attempt is not recorded, otherwise spam would extend its own block.
+func (s *Service) reserve(ctx context.Context, kind string, ip netip.Addr, email string, now time.Time) (int64, error) {
+	var id int64
+	err := store.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
+		var byIP, failed []time.Time
+		var err error
+		if ip.IsValid() {
+			if err = store.LockKey(ctx, tx, kind+"-ip:"+ip.String()); err != nil {
+				return err
+			}
+			if byIP, err = s.repo.RecentByIP(ctx, tx, kind, ip, now.Add(-time.Hour)); err != nil {
+				return err
+			}
+		}
+		var retry int
+		var limited bool
+		if kind == kindLogin {
+			if err = store.LockKey(ctx, tx, "login-email:"+strings.ToLower(email)); err != nil {
+				return err
+			}
+			if failed, err = s.repo.RecentFailedLogins(ctx, tx, email, now.Add(-time.Hour)); err != nil {
+				return err
+			}
+			retry, limited = domain.LoginDecision(domain.LoginAttempts{IP: byIP, EmailFailed: failed}, now)
+		} else {
+			retry, limited = domain.RegisterDecision(byIP, now)
+		}
+		if limited {
+			return &domain.RateLimitError{RetryAfterSec: retry}
+		}
+		id, err = s.repo.Reserve(ctx, tx, kind, ip, email, now)
+		return err
+	})
+	return id, err
 }
 
 // Register creates the owner account, the venue with the default plan and
 // the owner's device session in one transaction.
-func (s *Service) Register(ctx context.Context, in domain.RegisterInput) (Result, error) {
+func (s *Service) Register(ctx context.Context, in domain.RegisterInput, ip netip.Addr) (Result, error) {
 	in, err := domain.ValidateRegister(in)
 	if err != nil {
 		return Result{}, err
 	}
-	hash, err := auth.HashPassword(in.Password)
+	now := domain.DBTime(s.now())
+	attemptID, err := s.reserve(ctx, kindRegister, ip, "", now)
+	if err != nil {
+		return Result{}, fmt.Errorf("register: %w", err)
+	}
+	hash, err := auth.HashPassword(in.Password, s.passwordCost)
 	if err != nil {
 		return Result{}, err
 	}
-	now := domain.DBTime(s.now())
 	var res Result
 	err = store.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
 		accountID, ok, err := s.repo.Create(ctx, tx, in.Email, hash, in.DisplayName)
@@ -71,7 +132,7 @@ func (s *Service) Register(ctx context.Context, in domain.RegisterInput) (Result
 			return err
 		}
 		res = Result{Tokens: tokens, Venue: ven}
-		return nil
+		return s.repo.Succeed(ctx, tx, attemptID)
 	})
 	if err != nil {
 		return Result{}, fmt.Errorf("register: %w", err)
@@ -81,10 +142,15 @@ func (s *Service) Register(ctx context.Context, in domain.RegisterInput) (Result
 
 // Login signs an owner or admin account in on a device. Wrong email and
 // wrong password look the same to the caller.
-func (s *Service) Login(ctx context.Context, in domain.LoginInput) (Result, error) {
+func (s *Service) Login(ctx context.Context, in domain.LoginInput, ip netip.Addr) (Result, error) {
 	in, err := domain.ValidateLogin(in)
 	if err != nil {
 		return Result{}, err
+	}
+	// A limited request never reaches bcrypt.
+	attemptID, err := s.reserve(ctx, kindLogin, ip, in.Email, domain.DBTime(s.now()))
+	if err != nil {
+		return Result{}, fmt.Errorf("login: %w", err)
 	}
 	acc, found, err := s.repo.GetByEmail(ctx, s.pool, in.Email)
 	if err != nil {
@@ -92,7 +158,7 @@ func (s *Service) Login(ctx context.Context, in domain.LoginInput) (Result, erro
 	}
 	if !found {
 		// Burn comparable time so response latency does not reveal registered emails.
-		if _, err := auth.CheckPassword(dummyHash, in.Password); err != nil {
+		if _, err := auth.CheckPassword(s.dummyHash, in.Password); err != nil {
 			return Result{}, fmt.Errorf("login: %w", err)
 		}
 		return Result{}, fmt.Errorf("login: unknown email: %w", domain.ErrUnauthorized)
@@ -104,6 +170,7 @@ func (s *Service) Login(ctx context.Context, in domain.LoginInput) (Result, erro
 	if !ok {
 		return Result{}, fmt.Errorf("login: wrong password: %w", domain.ErrUnauthorized)
 	}
+	s.upgradeHash(ctx, acc, in.Password)
 	now := domain.DBTime(s.now())
 	var res Result
 	err = store.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
@@ -123,7 +190,7 @@ func (s *Service) Login(ctx context.Context, in domain.LoginInput) (Result, erro
 			return err
 		}
 		res = Result{Tokens: tokens, Venue: ven.ForRole(st.Role)}
-		return nil
+		return s.repo.Succeed(ctx, tx, attemptID)
 	})
 	if err != nil {
 		return Result{}, fmt.Errorf("login: %w", err)
@@ -131,5 +198,24 @@ func (s *Service) Login(ctx context.Context, in domain.LoginInput) (Result, erro
 	return res, nil
 }
 
-// dummyHash is bcrypt("not-a-password") at cost 10.
-const dummyHash = "$2a$10$t9jWBGXx7/eDl9lMni12ReZ11Gri0NVEh76499cV0ezTslb1/Mk.O"
+// upgradeHash replaces a hash made at a lower cost with one at the current
+// cost. It runs only after the password was proven. A failure is logged and
+// the login goes on: the old hash still works, and the next login retries.
+func (s *Service) upgradeHash(ctx context.Context, acc Account, password string) {
+	needs, err := auth.NeedsRehash(acc.PasswordHash, s.passwordCost)
+	if err != nil {
+		slog.WarnContext(ctx, "password hash cost", "account_id", acc.ID, "err", err)
+		return
+	}
+	if !needs {
+		return
+	}
+	fresh, err := auth.HashPassword(password, s.passwordCost)
+	if err != nil {
+		slog.WarnContext(ctx, "rehash password", "account_id", acc.ID, "err", err)
+		return
+	}
+	if err := s.repo.UpgradeHash(ctx, s.pool, acc.ID, acc.PasswordHash, fresh); err != nil {
+		slog.WarnContext(ctx, "store rehashed password", "account_id", acc.ID, "err", err)
+	}
+}

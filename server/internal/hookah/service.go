@@ -216,24 +216,25 @@ func (s *Service) Start(ctx context.Context, c auth.Claims, tableID, idempotency
 		if len(events) == 0 {
 			return fmt.Errorf("start hookah: plan of venue %s has no events", c.VenueID)
 		}
-		id, occupied, repeated, err := s.repo.Insert(ctx, tx, StartInput{
+		id, inserted, err := s.repo.Insert(ctx, tx, StartInput{
 			VenueID: c.VenueID, HallID: table.HallID, TableID: table.ID, StartedBy: c.StaffID,
 			StartedAt: now, ExpiresAt: events[len(events)-1].DueAt, Plan: plan, IdempotencyKey: idempotencyKey,
 		})
-		switch {
-		case occupied:
-			return fmt.Errorf("start hookah on table %s: %w", tableID, domain.ErrTableOccupied)
-		case repeated:
+		if err != nil {
+			return err
+		}
+		if !inserted {
+			// A parallel request with this key committed first: its hookah is
+			// the answer, whatever table this request named. No such hookah
+			// means the refusal came from the table.
 			row, found, err := s.repo.ByIdempotencyKey(ctx, tx, c.VenueID, idempotencyKey)
 			if err != nil {
 				return err
 			}
 			if !found {
-				return fmt.Errorf("start hookah: idempotency key %s vanished", idempotencyKey)
+				return fmt.Errorf("start hookah on table %s: %w", tableID, domain.ErrTableOccupied)
 			}
 			out, err = s.load(ctx, tx, row, now)
-			return err
-		case err != nil:
 			return err
 		}
 		if err := s.repo.InsertEvents(ctx, tx, id, events); err != nil {

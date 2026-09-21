@@ -21,6 +21,9 @@ services:
     env_file: .env
     environment:
       APP_ENV: prod
+      # Only Caddy reaches the api, so the last X-Forwarded-For entry is the
+      # caller. Kept here, not in .env, so a copied env file cannot switch it off.
+      TRUST_PROXY: "true"
       DATABASE_URL: postgres://hookah:${POSTGRES_PASSWORD}@postgres:5432/hookah?sslmode=disable
     depends_on:
       postgres:

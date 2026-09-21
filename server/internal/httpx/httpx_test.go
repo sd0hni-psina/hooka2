@@ -86,6 +86,48 @@ func TestDecodeRejectsUnknownFields(t *testing.T) {
 	require.ErrorIs(t, Decode(req, &v), domain.ErrValidation)
 }
 
+func TestDecodeRejectsATruncatedBody(t *testing.T) {
+	var v struct {
+		Name string `json:"name"`
+	}
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"name":`))
+	err := Decode(req, &v)
+	var ve *domain.ValidationError
+	require.ErrorAs(t, err, &ve)
+	require.Equal(t, domain.ReasonInvalid, ve.Fields["body"])
+}
+
+func TestRouterRejectsABodyOverOneMiB(t *testing.T) {
+	var v struct {
+		Name string `json:"name"`
+	}
+	r := NewRouter(func(h http.Handler) http.Handler { return h })
+	r.Public("POST /echo", func(w http.ResponseWriter, req *http.Request) error {
+		if err := Decode(req, &v); err != nil {
+			return err
+		}
+		NoContent(w)
+		return nil
+	})
+	send := func(name string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, APIPrefix+"/echo", strings.NewReader(`{"name":"`+name+`"}`)))
+		return rec
+	}
+
+	t.Run("a body just under the limit passes", func(t *testing.T) {
+		require.Equal(t, http.StatusNoContent, send(strings.Repeat("a", maxBody-20)).Code)
+	})
+	t.Run("a body over the limit is too_long, not a silent cut", func(t *testing.T) {
+		rec := send(strings.Repeat("a", maxBody))
+		require.Equal(t, http.StatusBadRequest, rec.Code)
+		var b body
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &b))
+		require.Equal(t, "validation_failed", b.Error.Code)
+		require.Equal(t, map[string]any{"body": "too_long"}, b.Error.Details["fields"])
+	})
+}
+
 func TestRouterUnknownAPIRouteIsJSONNotFound(t *testing.T) {
 	r := NewRouter(func(h http.Handler) http.Handler { return h })
 	rec := httptest.NewRecorder()

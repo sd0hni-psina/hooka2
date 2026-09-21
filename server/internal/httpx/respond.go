@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 
@@ -27,8 +26,10 @@ func NoContent(w http.ResponseWriter) { w.WriteHeader(http.StatusNoContent) }
 
 // Decode reads a JSON body into v. Unknown fields and trailing data fail
 // validation so clients learn about typos instead of silently losing input.
+// The router caps the body at maxBody, and a body over it fails with
+// body = too_long instead of being cut short.
 func Decode(r *http.Request, v any) error {
-	dec := json.NewDecoder(io.LimitReader(r.Body, maxBody))
+	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
 		return bodyError(err)
@@ -41,6 +42,11 @@ func Decode(r *http.Request, v any) error {
 
 func bodyError(err error) error {
 	v := &domain.ValidationError{}
-	v.Add("body", domain.ReasonInvalid)
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		v.Add("body", domain.ReasonTooLong)
+	} else {
+		v.Add("body", domain.ReasonInvalid)
+	}
 	return fmt.Errorf("decode body: %w: %w", v, err)
 }

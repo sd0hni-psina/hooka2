@@ -45,6 +45,22 @@ func start(e *apitest.Env, token, tableID, idemKey string) apitest.Response {
 	return e.Do("POST", "/tables/"+tableID+"/hookah", token, nil, "Idempotency-Key", idemKey)
 }
 
+// parallelStarts fires one start per table id at once with a shared key and
+// returns every response.
+func parallelStarts(e *apitest.Env, token, idemKey string, tables ...string) []apitest.Response {
+	out := make([]apitest.Response, len(tables))
+	var wg sync.WaitGroup
+	for i, table := range tables {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			out[i] = start(e, token, table, idemKey)
+		}()
+	}
+	wg.Wait()
+	return out
+}
+
 func decodeHookah(t *testing.T, res apitest.Response) domain.Hookah {
 	t.Helper()
 	var h domain.Hookah
@@ -132,6 +148,58 @@ func TestStartHookah(t *testing.T) {
 			}
 		}
 		require.Equal(t, 1, ok)
+		require.Equal(t, 1, e.Count(`hookahs where table_id = $1`, table))
+	})
+
+	t.Run("parallel retries with one key on one table all return the same hookah", func(t *testing.T) {
+		e := apitest.New(t, true)
+		token := e.TokenFor(e.Fx.Masters[0])
+		// Several rounds on free tables (the seed occupies 3 and 15): the race is timing dependent.
+		for _, label := range []string{"4", "5", "6", "7", "8"} {
+			table, k := e.Fx.TableIDs[label], key()
+			results := parallelStarts(e, token, k, table, table, table, table, table, table, table, table)
+			ids := map[string]bool{}
+			for _, r := range results {
+				require.Equal(t, 200, r.Status, "table %s: %s", label, r.Raw)
+				ids[decodeHookah(t, r).ID] = true
+			}
+			require.Len(t, ids, 1, "table %s", label)
+			require.Equal(t, 1, e.Count(`hookahs where idempotency_key = $1`, k))
+			require.Equal(t, 7, e.Count(`service_events where hookah_id in (select id from hookahs where idempotency_key = $1)`, k))
+		}
+	})
+
+	t.Run("parallel retries with one key aimed at two tables never fail with 500", func(t *testing.T) {
+		e := apitest.New(t, true)
+		token := e.TokenFor(e.Fx.Masters[0])
+		for _, pair := range [][2]string{{"4", "5"}, {"6", "7"}, {"8", "9"}} {
+			a, b, k := e.Fx.TableIDs[pair[0]], e.Fx.TableIDs[pair[1]], key()
+			tables := make([]string, 16)
+			for i := range tables {
+				tables[i] = []string{a, b}[i%2]
+			}
+			results := parallelStarts(e, token, k, tables...)
+			ids := map[string]bool{}
+			for _, r := range results {
+				require.Equal(t, 200, r.Status, "tables %v: %s", pair, r.Raw)
+				ids[decodeHookah(t, r).ID] = true
+			}
+			require.Len(t, ids, 1)
+			require.Equal(t, 1, e.Count(`hookahs where idempotency_key = $1`, k))
+		}
+	})
+
+	t.Run("a repeated key and a fresh key racing for one table leave one hookah and one refusal", func(t *testing.T) {
+		e := apitest.New(t, true)
+		token := e.TokenFor(e.Fx.Masters[0])
+		table, k := e.Fx.TableIDs["4"], key()
+		results := parallelStarts(e, token, k, table, table, table, table)
+		other := start(e, token, table, key())
+		require.Equal(t, 409, other.Status)
+		require.Equal(t, "table_occupied", other.Code())
+		for _, r := range results {
+			require.Equal(t, 200, r.Status, string(r.Raw))
+		}
 		require.Equal(t, 1, e.Count(`hookahs where table_id = $1`, table))
 	})
 

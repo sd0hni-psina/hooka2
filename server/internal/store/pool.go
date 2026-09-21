@@ -20,11 +20,15 @@ type Querier interface {
 	SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults
 }
 
-func NewPool(ctx context.Context, url string) (*pgxpool.Pool, error) {
+// NewPool opens a pool of at most maxConns connections. The limit is explicit
+// because pgx would otherwise pick max(4, cores), which on a small VPS is
+// either too few for a push burst or a surprise on a big machine.
+func NewPool(ctx context.Context, url string, maxConns int) (*pgxpool.Pool, error) {
 	cfg, err := pgxpool.ParseConfig(url)
 	if err != nil {
 		return nil, fmt.Errorf("parse database url: %w", err)
 	}
+	cfg.MaxConns = int32(maxConns)
 	// Scan timestamptz as UTC: tech.md stores and serves time in UTC, while
 	// pgx defaults to the process local zone.
 	cfg.AfterConnect = func(_ context.Context, conn *pgx.Conn) error {
