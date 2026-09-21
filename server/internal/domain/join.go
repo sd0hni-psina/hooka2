@@ -9,35 +9,65 @@ import (
 	"unicode/utf8"
 )
 
-// Join rate limit windows, tech.md sections 7 and 19.4.
+// Join rate limits, tech.md sections 7, 19.4 and 19.16.
 const (
 	JoinPerMinute = 5
 	JoinPerHour   = 20
+
+	JoinIPPerMinute   = 30
+	JoinIPPerHour     = 200
+	JoinBudgetPerHour = 300
 )
+
+// windowRetryAfter returns the seconds until the oldest attempt of an
+// exceeded window leaves it, or 0 when the window has room.
+func windowRetryAfter(attempts []time.Time, now time.Time, window time.Duration, limit int) int {
+	var inWindow []time.Time
+	for _, a := range attempts {
+		if now.Sub(a) < window {
+			inWindow = append(inWindow, a)
+		}
+	}
+	if len(inWindow) < limit {
+		return 0
+	}
+	// The window frees a slot when enough attempts age out that fewer
+	// than limit remain: that is the (len-limit+1)-th oldest.
+	oldest := nthOldest(inWindow, len(inWindow)-limit)
+	wait := oldest.Add(window).Sub(now)
+	return int(math.Ceil(wait.Seconds()))
+}
 
 // JoinRetryAfter decides whether a device may try another code. attempts are
 // the recorded attempts of the device, in any order. It returns the seconds
 // until the oldest attempt of an exceeded window leaves it.
 func JoinRetryAfter(attempts []time.Time, now time.Time) (retryAfterSec int, limited bool) {
-	check := func(window time.Duration, limit int) int {
-		var inWindow []time.Time
-		for _, a := range attempts {
-			if now.Sub(a) < window {
-				inWindow = append(inWindow, a)
-			}
-		}
-		if len(inWindow) < limit {
-			return 0
-		}
-		// The window frees a slot when enough attempts age out that fewer
-		// than limit remain: that is the (len-limit+1)-th oldest.
-		oldest := nthOldest(inWindow, len(inWindow)-limit)
-		wait := oldest.Add(window).Sub(now)
-		return int(math.Ceil(wait.Seconds()))
-	}
-	m := check(time.Minute, JoinPerMinute)
-	h := check(time.Hour, JoinPerHour)
-	retry := max(m, h)
+	retry := max(
+		windowRetryAfter(attempts, now, time.Minute, JoinPerMinute),
+		windowRetryAfter(attempts, now, time.Hour, JoinPerHour),
+	)
+	return retry, retry > 0
+}
+
+// JoinAttempts is what the three join limits look at. Device and IP hold
+// every recorded attempt of that device and address, Failed holds the wrong
+// codes of the whole service. Order does not matter.
+type JoinAttempts struct {
+	Device []time.Time
+	IP     []time.Time
+	Failed []time.Time
+}
+
+// JoinDecision applies the device, ip and service budget limits of tech.md
+// section 19.16 and returns the longest wait of the exceeded ones.
+func JoinDecision(a JoinAttempts, now time.Time) (retryAfterSec int, limited bool) {
+	retry, _ := JoinRetryAfter(a.Device, now)
+	retry = max(
+		retry,
+		windowRetryAfter(a.IP, now, time.Minute, JoinIPPerMinute),
+		windowRetryAfter(a.IP, now, time.Hour, JoinIPPerHour),
+		windowRetryAfter(a.Failed, now, time.Hour, JoinBudgetPerHour),
+	)
 	return retry, retry > 0
 }
 

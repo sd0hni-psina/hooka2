@@ -73,6 +73,82 @@ func TestJoinRetryAfterAllowsTheAttemptOnceTheWaitPasses(t *testing.T) {
 	})
 }
 
+// evenly places n attempts from fromSec seconds ago up to toSec seconds ago.
+func evenly(now time.Time, n, fromSec, toSec int) []time.Time {
+	out := make([]time.Time, n)
+	for i := range out {
+		age := fromSec
+		if n > 1 {
+			age = fromSec - i*(fromSec-toSec)/(n-1)
+		}
+		out[i] = now.Add(-time.Duration(age) * time.Second)
+	}
+	return out
+}
+
+func TestJoinDecision(t *testing.T) {
+	now := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name    string
+		a       JoinAttempts
+		retry   int
+		limited bool
+	}{
+		{"no history passes", JoinAttempts{}, 0, false},
+		{"twenty nine attempts from one ip in a minute pass", JoinAttempts{IP: evenly(now, 29, 59, 1)}, 0, false},
+		{"thirty attempts from one ip in a minute limit until the oldest ages out", JoinAttempts{IP: evenly(now, 30, 59, 1)}, 1, true},
+		{"ip attempts older than a minute do not count for the minute window", JoinAttempts{IP: evenly(now, 30, 3000, 61)}, 0, false},
+		{"one hundred ninety nine attempts from one ip in an hour pass", JoinAttempts{IP: evenly(now, 199, 3500, 61)}, 0, false},
+		{"two hundred attempts from one ip in an hour limit", JoinAttempts{IP: evenly(now, 200, 3500, 61)}, 100, true},
+		{"two hundred ip attempts older than an hour pass", JoinAttempts{IP: evenly(now, 200, 7200, 3601)}, 0, false},
+		{"two hundred ninety nine wrong codes in an hour pass", JoinAttempts{Failed: evenly(now, 299, 3500, 1)}, 0, false},
+		{"three hundred wrong codes in an hour exhaust the budget", JoinAttempts{Failed: evenly(now, 300, 3500, 1)}, 100, true},
+		{"wrong codes older than an hour do not count", JoinAttempts{Failed: evenly(now, 300, 9000, 3601)}, 0, false},
+		{"the longest wait of the three limits wins", JoinAttempts{
+			Device: evenly(now, 5, 50, 10),
+			IP:     evenly(now, 30, 59, 1),
+			Failed: evenly(now, 300, 3000, 1),
+		}, 600, true},
+		{"the device limit alone still applies", JoinAttempts{Device: evenly(now, 5, 50, 10)}, 10, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			retry, limited := JoinDecision(c.a, now)
+			require.Equal(t, c.limited, limited)
+			require.Equal(t, c.retry, retry)
+		})
+	}
+}
+
+func TestJoinDecisionAllowsTheAttemptOnceTheWaitPasses(t *testing.T) {
+	now := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
+	draw := func(t *rapid.T, name string, maxN int) []time.Time {
+		n := rapid.IntRange(0, maxN).Draw(t, name+"_n")
+		out := make([]time.Time, n)
+		for i := range out {
+			out[i] = now.Add(-time.Duration(rapid.IntRange(0, 4000).Draw(t, name+"_age")) * time.Second)
+		}
+		return out
+	}
+	rapid.Check(t, func(t *rapid.T) {
+		a := JoinAttempts{Device: draw(t, "device", 25), IP: draw(t, "ip", 260), Failed: draw(t, "failed", 340)}
+		retry, limited := JoinDecision(a, now)
+		if !limited {
+			if retry != 0 {
+				t.Fatalf("not limited but retry %d", retry)
+			}
+			return
+		}
+		if retry <= 0 {
+			t.Fatalf("limited with retry %d", retry)
+		}
+		later := now.Add(time.Duration(retry) * time.Second)
+		if r, still := JoinDecision(a, later); still {
+			t.Fatalf("still limited (%d s) after waiting %d s", r, retry)
+		}
+	})
+}
+
 func TestValidateJoin(t *testing.T) {
 	ok := JoinInput{Code: "042137", DisplayName: "  Ерлан ", Device: Device{DeviceID: "device-123", Platform: PlatformAndroid}}
 	got, err := ValidateJoin(ok)
