@@ -247,8 +247,15 @@ func (s *Service) Refresh(ctx context.Context, refresh string) (domain.Tokens, e
 	return s.sign(sess.Staff, sess.SessionID, next, now)
 }
 
+// Logout revokes the session and cuts its open sockets. The sockets close
+// after the revoke: the access token is checked once at the upgrade, so
+// without this a signed out device would keep listening.
 func (s *Service) Logout(ctx context.Context, c auth.Claims) error {
-	return s.repo.RevokeSession(ctx, s.pool, c.SessionID)
+	if err := s.repo.RevokeSession(ctx, s.pool, c.SessionID); err != nil {
+		return err
+	}
+	s.evictor.CloseSession(c.VenueID, c.SessionID)
+	return nil
 }
 
 func (s *Service) SetPushToken(ctx context.Context, c auth.Claims, token string) error {
@@ -258,10 +265,11 @@ func (s *Service) SetPushToken(ctx context.Context, c auth.Claims, token string)
 	return s.repo.SetPushToken(ctx, s.pool, c.SessionID, token)
 }
 
-// Evictor closes the open connections of a staff member. The realtime hub
-// implements it.
+// Evictor closes open connections of a staff member or of one session. The
+// realtime hub implements it.
 type Evictor interface {
 	CloseStaff(venueID, staffID string)
+	CloseSession(venueID, sessionID string)
 }
 
 // List returns the whole staff of the venue, tech.md section 19.11.

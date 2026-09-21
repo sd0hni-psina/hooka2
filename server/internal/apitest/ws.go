@@ -69,6 +69,18 @@ func (w *WS) Until(typ string) Message {
 	}
 }
 
+// CloseStatus waits for the server to drop the connection and returns the
+// close code it sent, or -1 when the connection stayed open for two seconds.
+func (w *WS) CloseStatus() websocket.StatusCode {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	for {
+		if _, _, err := w.conn.Read(ctx); err != nil {
+			return websocket.CloseStatus(err)
+		}
+	}
+}
+
 // Closed reports whether the server dropped this connection.
 func (w *WS) Closed() bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
