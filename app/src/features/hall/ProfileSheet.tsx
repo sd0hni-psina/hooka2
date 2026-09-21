@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { t } from '../../i18n/ru';
 import { useAuthStore } from '../../store/auth';
 import { useHallStore } from '../../store/hall';
+import { staffOnline } from '../../store/selectors';
 import { Badge, Button, ConfirmDialog, Icon, ListRow, Sheet, Text } from '../../ui';
 
 type Props = { visible: boolean; onClose: () => void };
@@ -14,7 +15,7 @@ export function ProfileSheet({ visible, onClose }: Props) {
   const router = useRouter();
   const me = useAuthStore((s) => s.me);
   const hallId = useHallStore((s) => s.hallId);
-  const online = useHallStore((s) => s.state?.staff_online ?? []);
+  const online = useHallStore(staffOnline);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const manager = me?.staff.role !== 'master';
   const others = online.filter((s) => s.id !== me?.staff.id);

@@ -20,8 +20,24 @@ function memo1<A extends readonly unknown[], R>(fn: (...args: A) => R): (...args
   };
 }
 
+// zustand compares a selector result with Object.is on every store change. A
+// fresh `?? []` before the first snapshot fails that test forever and React
+// stops the screen with "maximum update depth". These constants keep the
+// empty answer one object.
+const NO_TABLES: Table[] = [];
+const NO_STAFF: HallState['staff_online'] = [];
+
 export function selectTables(d: HallSlice): Table[] {
-  return view(d)?.tables ?? [];
+  return view(d)?.tables ?? NO_TABLES;
+}
+
+// savedTables are the tables as the server sent them, without local guesses.
+export function savedTables(d: Pick<HallData, 'state'>): Table[] {
+  return d.state?.tables ?? NO_TABLES;
+}
+
+export function staffOnline(d: Pick<HallData, 'state'>): HallState['staff_online'] {
+  return d.state?.staff_online ?? NO_STAFF;
 }
 
 const buildView = memo1((state: HallState | null, pending: Record<string, Optimistic>): HallState | null => {
