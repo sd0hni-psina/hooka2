@@ -142,6 +142,17 @@ describe('auth store', () => {
     });
   });
 
+  it.each([
+    ['unauthorized', 401],
+    ['forbidden', 403],
+  ])('signs out when /me answers %s after the socket closed with 1008', async (code, status) => {
+    // The revoked or blocked master: the WS hook asks /me and lets the answer decide.
+    mockServer(() => json(status, { error: { code, message: 'x' } }));
+    await useAuthStore.getState().refreshMe();
+    expect(useAuthStore.getState().status).toBe('signedOut');
+    expect(useAuthStore.getState().session).toBeNull();
+  });
+
   it('forgets a saved hall that no longer exists', async () => {
     useAuthStore.setState({ hallId: 'gone' });
     mockServer(() => json(200, me));
