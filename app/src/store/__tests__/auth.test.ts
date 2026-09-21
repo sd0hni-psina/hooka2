@@ -92,6 +92,56 @@ describe('auth store', () => {
     expect(useAuthStore.getState().session).toBeNull();
   });
 
+  describe('a failed refresh', () => {
+    const forbidden = () => json(403, { error: { code: 'forbidden', message: 'x' } });
+    const refreshAnswers = (answer: () => Response) =>
+      mockServer((c) => (c.url.endsWith('/auth/refresh') ? answer() : unauthorized()));
+
+    it.each([
+      ['unauthorized', unauthorized],
+      ['forbidden', forbidden],
+    ])('ends the session on %s', async (_name, answer) => {
+      refreshAnswers(answer);
+      await expect(useAuthStore.getState().refreshSession()).resolves.toBe(false);
+      expect(useAuthStore.getState().session).toBeNull();
+      expect(useAuthStore.getState().status).toBe('signedOut');
+    });
+
+    it.each([
+      ['500', () => json(500, { error: { code: 'internal', message: 'x' } })],
+      ['502 from the proxy during a deploy', () => json(502, null)],
+    ])('keeps the session on %s', async (_name, answer) => {
+      refreshAnswers(answer);
+      await expect(useAuthStore.getState().refreshSession()).rejects.toBeDefined();
+      expect(useAuthStore.getState().session?.refresh_token).toBe('r1');
+      expect(useAuthStore.getState().status).toBe('signedIn');
+    });
+
+    it('keeps the session when the network is down', async () => {
+      globalThis.fetch = jest.fn(async () => {
+        throw new Error('offline');
+      }) as unknown as typeof fetch;
+      await expect(useAuthStore.getState().refreshSession()).rejects.toBeDefined();
+      expect(useAuthStore.getState().session?.refresh_token).toBe('r1');
+    });
+
+    it('keeps the session when an expired access meets a proxy error on refresh', async () => {
+      // The common cold start after 30 minutes away: /me answers 401, the
+      // refresh behind it answers 502. The master stays signed in.
+      refreshAnswers(() => json(502, null));
+      await useAuthStore.getState().refreshMe();
+      expect(useAuthStore.getState().session?.refresh_token).toBe('r1');
+      expect(useAuthStore.getState().error).not.toBeNull();
+    });
+
+    it('sends the token it has when refreshing ahead of expiry fails', async () => {
+      useAuthStore.setState({ session: session('old-access', 'r1', 30_000) });
+      const calls = mockServer((c) => (c.url.endsWith('/auth/refresh') ? json(502, null) : json(200, me)));
+      await expect(getMe()).resolves.toEqual(me);
+      expect(calls[calls.length - 1]!.auth).toBe('Bearer old-access');
+    });
+  });
+
   it('forgets a saved hall that no longer exists', async () => {
     useAuthStore.setState({ hallId: 'gone' });
     mockServer(() => json(200, me));

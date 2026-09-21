@@ -90,12 +90,19 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     if (!s) return null;
     const expires = Date.parse(s.access_expires_at);
     if (s.refresh_token && !Number.isNaN(expires) && expires - serverNow() < REFRESH_AHEAD_MS) {
-      await get().refreshSession();
+      try {
+        await get().refreshSession();
+      } catch {
+        // The refresh is early insurance. The current token still works for
+        // up to a minute, so a proxy hiccup must not cost the request.
+      }
     }
     return get().session?.access_token ?? null;
   },
 
-  // Concurrent callers share one /auth/refresh call.
+  // Concurrent callers share one /auth/refresh call. Resolves true with a new
+  // token, false when the session is gone, and rejects when the server could
+  // not be asked: the caller sees trouble, the session survives.
   refreshSession: () => {
     if (inflight) return inflight;
     const run = async (): Promise<boolean> => {
@@ -107,11 +114,15 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         set({ session: tokens });
         return true;
       } catch (e) {
-        if (e instanceof ApiError) {
+        // Only a verdict of the server ends the session. A 502 from the proxy
+        // during a deploy or a dead network says nothing about the token,
+        // tech.md section 19.16.
+        if (e instanceof ApiError && (e.code === 'unauthorized' || e.code === 'forbidden')) {
           await clearSession();
           set({ status: 'signedOut', session: null, me: null, hallId: null });
+          return false;
         }
-        return false;
+        throw e;
       }
     };
     inflight = run().finally(() => {
